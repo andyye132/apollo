@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="edu.uw.ubicomp.feverprobe"
+    android:versionCode="1"
+    android:versionName="0.1">
+
+    <uses-sdk android:minSdkVersion="30" android:targetSdkVersion="33" />
+
+    <!-- Development permission: granted once with `adb shell pm grant edu.uw.ubicomp.feverprobe android.permission.DUMP`. -->
+    <uses-permission android:name="android.permission.DUMP" />
+
+    <application
+        android:label="FeverProbe"
+        android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen">
+        <activity
+            android:name=".ProbeActivity"
+            android:exported="true"
+            android:screenOrientation="landscape">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

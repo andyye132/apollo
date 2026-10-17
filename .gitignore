@@ -1,0 +1,6 @@
+.DS_Store
+__pycache__/
+
+# FeverProbe build output and local signing key (build.sh regenerates the key)
+probe-app/build/
+probe-app/debug.keystore

@@ -4,3 +4,12 @@ __pycache__/
 # FeverProbe build output and local signing key (build.sh regenerates the key)
 probe-app/build/
 probe-app/debug.keystore
+
+# MicTest build output, local signing key and recordings
+tools/mictest/build/
+tools/mictest/debug.keystore
+tools/mictest/out/
+
+# Android Studio per-user project files
+.idea/
+*.iml

@@ -36,7 +36,7 @@ Apollo is an Android app that takes health measurements with the phone's own sen
 | Phone | Status | Use it for |
 | --- | --- | --- |
 | Pixel 4 (Android 13) | Have it. The no-root thermistor route is verified: 19 sensors at about 0.002 °C resolution | Main dev phone now |
-| Pixel 7 | Have it, not yet probed | Run `tools/probe_phone.sh` and the forehead test next |
+| Pixel 7 (Android 15) | Have it. Mic measured linear on `VOICE_RECOGNITION`; front camera max 30 fps | Lung tests, heart rate, motion. Still run `tools/probe_phone.sh` and the forehead test |
 | Pixel 6 | Don't have one. It's the phone FeverPhone was validated on | Buy 1–2 if FeverPhone accuracy matters more than demo speed |
 | Any teammate's Android | Varies | UI, journal, agent, steps, heart rate |
 
@@ -56,7 +56,7 @@ Set `minSdk = 33` so the Pixel 4 works, and `targetSdk = compileSdk = 36`. Every
 | Camera | CameraX with Camera2 interop | Torch, frame-rate range, AE/AWB lock |
 | Motion | `SensorManager` | Step counter, step detector, pressure, accelerometer |
 | Thermistors | `Debug.dumpService("thermalservice")` with DUMP granted over ADB | Verified on the Pixel 4 with no root |
-| Audio (stretch) | `AudioRecord` with `UNPROCESSED` source | Avoids AGC and noise suppression |
+| Audio (stretch) | `AudioRecord` with the `VOICE_RECOGNITION` source at 48 kHz, effects forced off | Neither Pixel supports `UNPROCESSED`; `VOICE_RECOGNITION` measured linear on both (`tools/mictest/`) |
 | On-device ML | Plain Kotlin for linear models and exported random forests; LiteRT if a neural net arrives; MediaPipe Tasks for face landmarks | Small, inspectable models first |
 | Charts | Vico (Compose) | Native Compose charts |
 | Health platform | Health Connect, optional write-only | Interop with other apps, but other apps can read it, so it's opt-in |
@@ -445,6 +445,7 @@ Eye tracking (for example, flagging fast eye movement as a sign of overwhelm) an
 
 - Android only allows camera use in the background from a camera-type foreground service started while the app is visible, with the camera indicator on the whole time.
 - No paper in `Papers/` validates an eye-movement measure, so the metric itself would be our own research.
+- **The front camera is too slow for saccades.** On the Pixel 7 it maxes out at 30 fps, with no high-speed modes. Saccades last 20–200 ms, so eye-movement speed can't be measured, only blink rate and how often gaze shifts.
 - Face landmarks at a useful frame rate are a battery and heat cost. That heat would also fight FeverPhone.
 
 What we do now, so it can be added later without rework:
@@ -850,21 +851,47 @@ The sound of a forced exhale encodes airflow. The pipeline:
 
 #### Android implementation
 
-1. **Capture:** `AudioRecord` with `MediaRecorder.AudioSource.UNPROCESSED`. Check `AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED` first. Use 48 kHz.
+1. **Capture:** `AudioRecord` with `MediaRecorder.AudioSource.VOICE_RECOGNITION` at 48 kHz, mono, bottom mic.
+   - Create `AutomaticGainControl`, `NoiseSuppressor` and `AcousticEchoCanceler` on the session if available, and call `setEnabled(false)` on each.
+   - **Don't use `UNPROCESSED`:** neither Pixel supports it.
+   - **Don't use `MIC`:** it has a hidden expander on the Pixel 4.
+   - **Never use `VOICE_COMMUNICATION`:** it has a noise gate and adaptive gain.
+   - See the mic linearity results below.
 2. **Coaching UI:** full inhale, then blast it out. Show a live flow bar like their ball-in-cylinder.
 3. **Features:** compute them on the phone.
-4. **Model:** train in `analysis/` on paired data from a spirometer.
+4. **Model, hackathon version:** peak expiratory flow only, from the peak of the flow envelope, with a straight-line fit per phone against a peak-flow meter.
+   - Peak-flow meters cost about $20 at a pharmacy, much cheaper than a spirometer.
+   - FEV1 and FVC need a spirometer, so leave them out for now.
+5. **Model, full version:** train in `analysis/` on paired data from a spirometer.
+
+#### Mic linearity results (2026-10-17)
+
+`tools/mictest/` plays a 1 kHz tone in 6 dB steps (−36 → −6 → −36 dBFS) while the phone records it. A linear source records 6 dB per step, the same up and down. The full table is in `tools/mictest/README.md`.
+
+| Source | Pixel 4 | Pixel 7 |
+| --- | --- | --- |
+| `VOICE_RECOGNITION` | ✅ slope 0.992, max deviation 0.27 dB | ✅ slope 0.975, max deviation 0.71 dB |
+| `MIC` | ❌ expander pushes quiet sounds down | ✅ slope 0.997 |
+| `VOICE_COMMUNICATION` | ❌ noise gate below about −24 dBFS | ❌ adaptive gain |
+
+Neither phone exposes automatic gain control as an effect, and Android's framework pre-processing (AEC, NS) applies only to `voice_communication`. The `MIC` expander on the Pixel 4 lives in the Qualcomm DSP and is invisible in every config file, so only a measurement shows it.
+
+**Gotcha:** the first run showed heavy compression on every source. It came from the laptop's audio enhancements (Windows/Realtek), not the phone. Turn enhancements off before running the test.
 
 #### First steps
 
+- [x] Check that a mic source without adaptive gain exists: `VOICE_RECOGNITION`, on both Pixels
+- [ ] Clipping check: record several hard blows at arm's length and look at the peak level (the linearity test stopped at −6 dBFS played)
+- [ ] Peak-flow calibration on the Pixel 7: 3 blows per person into the meter and 3 at the phone, then fit a line from the envelope peak to the meter's L/min
 - [ ] Ask the SpiroSmart authors in the lab for code and data
-- [ ] Borrow a portable spirometer before collecting anything
+- [ ] Borrow a portable spirometer before attempting FEV1 or FVC
 
 #### Watch out for
 
 - **Needs a quiet room.** Inhalation is inaudible.
 - **FVC is least accurate:** only about the first 3 s of the exhale are audible.
-- **Mic responses differ per phone,** and the paper had only one phone.
+- **Mic responses differ per phone,** and the paper had only one phone. Absolute level differs between phones, so calibrate each one.
+- **Hidden DSP processing differs per phone and per source.** Run `tools/mictest/run_linearity.sh` on any new phone before trusting its envelope.
 
 ### Saleheen 2020: lung function from a vowel
 
@@ -889,7 +916,7 @@ The sound of a forced exhale encodes airflow. The pipeline:
 
 #### Android implementation
 
-1. `AudioRecord` at 16 kHz or higher, `UNPROCESSED` source, with loudness normalisation as in the paper.
+1. `AudioRecord` at 16 kHz or higher on the `VOICE_RECOGNITION` source with effects off (see SpiroSmart), with loudness normalisation as in the paper.
 2. Port the feature extraction, which is a reimplementation job (MFCC, chroma, pitch for jitter and shimmer). Train in `analysis/`.
 
 #### Watch out for
@@ -920,7 +947,7 @@ The sound of a forced exhale encodes airflow. The pipeline:
 
 Not for v1. If we try it, first sweep 17–22.5 kHz through a Pixel speaker and record it to see whether the hardware can do it. Then:
 
-- **Capture:** `AudioTrack` and `AudioRecord` at 48 kHz on the `UNPROCESSED` source.
+- **Capture:** `AudioTrack` and `AudioRecord` at 48 kHz on the `VOICE_RECOGNITION` source (`UNPROCESSED` isn't supported on our Pixels). Linearity is checked only at 1 kHz so far, so check its response at 17–22.5 kHz too.
 - **GLI-2012:** implement the predicted-value equations, and collect demographics.
 
 #### Watch out for
@@ -1001,7 +1028,7 @@ kotlinx-coroutines-test       = { module = "org.jetbrains.kotlinx:kotlinx-corout
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />  <!-- eye tracking, later -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />              <!-- lung papers, later -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />              <!-- lung tests: VOICE_RECOGNITION source -->
     <!-- Development permission, granted once per phone:
          adb shell pm grant edu.uw.ubicomp.apollo android.permission.DUMP -->
     <uses-permission android:name="android.permission.DUMP"

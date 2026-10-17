@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Apollo Design Doc</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout: sticky header + tab bar; each tab is a two-column page (section index | content);
+   the Papers tab is a list/detail instrument panel. Generated from docs/DESIGN.md. */
+:root {
+  --bg: #f3f5f7;
+  --surface: #ffffff;
+  --surface-2: #eaeef2;
+  --ink: #15202b;
+  --muted: #5b6877;
+  --line: #d9e0e7;
+  --accent: #1c5bc9;
+  --accent-soft: #e3ecfb;
+  --trace: #d4442e;
+  --code-bg: #111a24;
+  --code-ink: #dce6f0;
+  --core: #1c5bc9;      --core-soft: #e3ecfb;
+  --design: #7346bd;    --design-soft: #efe8fa;
+  --exp: #a35f00;       --exp-soft: #fbefdc;
+  --stretch: #24766a;   --stretch-soft: #dff2ee;
+  --ref: #606b78;       --ref-soft: #eceff3;
+  --font-display: "Bricolage Grotesque", "IBM Plex Sans", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --radius: 10px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e141a; --surface: #151d26; --surface-2: #1c2631; --ink: #e4eaf0; --muted: #98a6b4; --line: #27323e;
+    --accent: #7eaaf5; --accent-soft: #1b2a42; --trace: #f07a64; --code-bg: #0a1017; --code-ink: #d3dde8;
+    --core: #7eaaf5; --core-soft: #1b2a42; --design: #b393ea; --design-soft: #2a2140; --exp: #e9a64a; --exp-soft: #33260f;
+    --stretch: #5cc2b1; --stretch-soft: #12302b; --ref: #a3adb8; --ref-soft: #222b35;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e141a; --surface: #151d26; --surface-2: #1c2631; --ink: #e4eaf0; --muted: #98a6b4; --line: #27323e;
+  --accent: #7eaaf5; --accent-soft: #1b2a42; --trace: #f07a64; --code-bg: #0a1017; --code-ink: #d3dde8;
+  --core: #7eaaf5; --core-soft: #1b2a42; --design: #b393ea; --design-soft: #2a2140; --exp: #e9a64a; --exp-soft: #33260f;
+  --stretch: #5cc2b1; --stretch-soft: #12302b; --ref: #a3adb8; --ref-soft: #222b35;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.6 var(--font-body);
+}
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[hidden] { display: none !important; }
+
+.wrap { max-width: 1200px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+/* Header */
+header.top { background: var(--surface); border-bottom: 1px solid var(--line); }
+header.top .wrap { padding-block: 28px 18px; display: grid; gap: 10px; }
+.eyebrow { font: 500 12px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--trace); }
+h1.title { font: 700 clamp(28px, 4.2vw, 42px)/1.05 var(--font-display); margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+.trace { width: 100%; max-width: 520px; height: 28px; display: block; }
+.trace path { fill: none; stroke: var(--trace); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.intro { color: var(--muted); max-width: 78ch; }
+.intro p { margin: 0 0 4px; }
+.intro code { color: var(--ink); }
+
+/* Tabs */
+nav.tabs { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+nav.tabs .wrap { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+nav.tabs .wrap::-webkit-scrollbar { display: none; }
+.tab {
+  appearance: none; border: 0; background: none; color: var(--muted); cursor: pointer;
+  font: 500 14px/1 var(--font-body); padding: 14px 12px 12px; border-bottom: 2px solid transparent; white-space: nowrap;
+  display: inline-flex; gap: 8px; align-items: center;
+}
+.tab:hover { color: var(--ink); }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.tab .n { font: 500 11px/1 var(--font-mono); color: var(--muted); background: var(--surface-2); border-radius: 999px; padding: 3px 6px; }
+
+/* Page */
+main .wrap { padding-block: 28px 64px; }
+.page { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 40px; align-items: start; }
+.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 64px); display: grid; gap: 2px; font-size: 13.5px; }
+.toc .label { font: 500 11px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px 10px; }
+.toc a { color: var(--muted); text-decoration: none; padding: 6px 10px; border-radius: 6px; border-left: 2px solid transparent; }
+.toc a:hover { color: var(--ink); background: var(--surface-2); }
+.toc a.on { color: var(--ink); border-left-color: var(--accent); background: var(--surface); }
+
+/* Content typography */
+.content { min-width: 0; max-width: 860px; }
+.content > :first-child { margin-top: 0; }
+.content p, .content li { max-width: 76ch; }
+.content h3 { font: 700 22px/1.25 var(--font-display); margin: 44px 0 12px; padding-top: 20px; border-top: 1px solid var(--line); scroll-margin-top: 80px; text-wrap: balance; }
+.content > h3:first-child { border-top: 0; padding-top: 0; }
+.content h4 { font: 600 15.5px/1.3 var(--font-body); margin: 28px 0 8px; }
+.content ul, .content ol { padding-left: 22px; }
+.content li { margin: 4px 0; }
+.content li > ul, .content li > ol { margin: 4px 0; }
+.content code { font: 0.88em var(--font-mono); background: var(--surface-2); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.content strong { font-weight: 600; }
+.content hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
+.content li:has(> input[type="checkbox"]) { list-style: none; margin-left: -22px; display: flex; gap: 10px; align-items: baseline; }
+.content input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; flex: none; transform: translateY(2px); cursor: pointer; }
+
+.table-wrap { overflow-x: auto; margin: 14px 0 18px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+tr:last-child td { border-bottom: 0; }
+th { font: 500 11.5px/1.3 var(--font-mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); white-space: nowrap; }
+td:first-child { font-weight: 500; }
+
+.code { position: relative; margin: 14px 0 18px; }
+.code pre { margin: 0; background: var(--code-bg); color: var(--code-ink); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; font: 13px/1.55 var(--font-mono); }
+.code pre code { background: none; padding: 0; font: inherit; color: inherit; overflow-wrap: normal; }
+.code .lang { position: absolute; top: 8px; right: 64px; font: 500 10.5px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: #8b9aab; }
+.copy {
+  position: absolute; top: 6px; right: 6px; appearance: none; cursor: pointer;
+  font: 500 11px/1 var(--font-mono); color: #c8d4e0; background: #233140; border: 1px solid #33445a; border-radius: 6px; padding: 6px 8px;
+}
+.copy:hover { background: #2c3d50; }
+
+/* Papers */
+.papers-intro { max-width: 860px; margin-bottom: 26px; }
+.papers-intro > :first-child { margin-top: 0; }
+details.overview summary { cursor: pointer; color: var(--accent); font-weight: 500; font-size: 14px; }
+details.overview[open] summary { margin-bottom: 4px; }
+.papers { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 32px; align-items: start; }
+.paper-side { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 64px); display: grid; gap: 12px; }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  appearance: none; cursor: pointer; border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+  font: 500 12px/1 var(--font-body); padding: 7px 10px; border-radius: 999px;
+}
+.chip[aria-pressed="true"] { color: var(--ink); border-color: var(--ink); }
+.paper-list { display: grid; gap: 6px; max-height: calc(100vh - 220px); overflow-y: auto; padding-right: 4px; }
+.paper-item {
+  appearance: none; text-align: left; cursor: pointer; width: 100%;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: var(--radius);
+  padding: 10px 12px; display: grid; gap: 4px; font: inherit;
+}
+.paper-item:hover { border-color: var(--muted); }
+.paper-item[aria-current="true"] { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.paper-item .name { font-weight: 600; font-size: 14px; line-height: 1.3; }
+.paper-item .what { font-size: 12.5px; color: var(--muted); line-height: 1.35; }
+.badge { justify-self: start; font: 500 10.5px/1 var(--font-mono); letter-spacing: .05em; text-transform: uppercase; padding: 4px 7px; border-radius: 5px; border: 1px solid currentColor; }
+.t-core { color: var(--core); background: var(--core-soft); }
+.t-design { color: var(--design); background: var(--design-soft); }
+.t-experimental { color: var(--exp); background: var(--exp-soft); }
+.t-stretch { color: var(--stretch); background: var(--stretch-soft); }
+.t-reference { color: var(--ref); background: var(--ref-soft); }
+
+.paper-detail { min-width: 0; }
+.paper-card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 26px 28px 30px; }
+.paper-card h3 { font: 700 26px/1.15 var(--font-display); margin: 10px 0 6px; padding: 0; border: 0; text-wrap: balance; }
+.paper-card .cite { color: var(--muted); font-size: 13.5px; margin: 0 0 18px; max-width: 80ch; }
+.specs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; margin: 0 0 8px; }
+.spec { background: var(--surface-2); padding: 10px 12px; min-width: 0; }
+.spec dt { font: 500 10.5px/1.2 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.spec dd { margin: 0; font-size: 13.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.spec.wide { grid-column: 1 / -1; }
+.paper-card h4 { font: 600 12px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 30px 0 10px; padding-top: 16px; border-top: 1px solid var(--line); }
+.pager { display: flex; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.pager button { appearance: none; cursor: pointer; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 9px 12px; font: 500 13px/1.2 var(--font-body); max-width: 48%; text-align: left; }
+.pager button:hover { border-color: var(--muted); }
+.pager button:last-child { text-align: right; margin-left: auto; }
+.pager small { display: block; color: var(--muted); font-size: 11px; margin-bottom: 3px; }
+
+footer { color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--line); }
+footer .wrap { padding-block: 18px 28px; }
+
+/* Narrow screens */
+@media (max-width: 920px) {
+  .page { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .toc { position: static; display: flex; overflow-x: auto; gap: 6px; padding-bottom: 6px; }
+  .toc .label { display: none; }
+  .toc a { white-space: nowrap; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
+  .toc a.on { border-color: var(--accent); }
+  .papers { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .paper-side { position: static; }
+  .paper-list { display: flex; overflow-x: auto; max-height: none; padding-bottom: 6px; }
+  .paper-item { min-width: 210px; }
+}
+@media (max-width: 560px) {
+  .specs { grid-template-columns: minmax(0, 1fr); }
+  .paper-card { padding: 18px 16px 22px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .panel { animation: fade .18s ease-out; }
+  @keyframes fade { from { opacity: .6; } to { opacity: 1; } }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="eyebrow"><span class="dot"></span><span>UW Ubicomp · design doc</span><span id="built">built __BUILT_AT__</span></div>
+    <h1 class="title" id="doc-title">Apollo design doc</h1>
+    <svg class="trace" viewBox="0 0 520 28" aria-hidden="true" preserveAspectRatio="none">
+      <path d="M0 18 L60 18 C70 18 72 17 76 15 C80 12 84 4 90 4 C96 4 99 13 104 16 C108 18 112 17 118 15 C122 14 126 18 132 18 L190 18 C200 18 202 17 206 15 C210 12 214 4 220 4 C226 4 229 13 234 16 C238 18 242 17 248 15 C252 14 256 18 262 18 L320 18 C330 18 332 17 336 15 C340 12 344 4 350 4 C356 4 359 13 364 16 C368 18 372 17 378 15 C382 14 386 18 392 18 L450 18 C460 18 462 17 466 15 C470 12 474 4 480 4 C486 4 489 13 494 16 C498 18 502 17 508 15 C512 14 516 18 520 18"/>
+    </svg>
+    <div class="intro" id="intro"></div>
+  </div>
+</header>
+<nav class="tabs" aria-label="Sections"><div class="wrap" role="tablist" id="tabs"></div></nav>
+<main><div class="wrap" id="panels"><noscript>This page needs JavaScript to render. Read docs/DESIGN.md instead.</noscript></div></main>
+<footer><div class="wrap">Generated from <code>docs/DESIGN.md</code> by <code>docs/build.py</code>. Edit the Markdown, then rebuild. Checkboxes you tick are saved in this browser only.</div></footer>
+
+<script type="text/markdown" id="design-md"><!--__DESIGN_MD__--></script>
+<script>/*__MARKED__*/</script>
+<script>
+(function () {
+  "use strict";
+  var STORE = "apollo-doc:";
+  var TIERS = [
+    { key: "core", label: "Core v1" },
+    { key: "design", label: "Design input" },
+    { key: "experimental", label: "Experimental" },
+    { key: "stretch", label: "Stretch" },
+    { key: "reference", label: "Reference" }
+  ];
+
+  function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }
+  function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+  function store(k, v) { try { if (v === undefined) return localStorage.getItem(STORE + k); localStorage.setItem(STORE + k, v); } catch (e) { return null; } }
+  function tierOf(text) {
+    var t = (text || "").toLowerCase();
+    for (var i = 0; i < TIERS.length; i++) if (t.indexOf(TIERS[i].key) === 0 || t.indexOf(TIERS[i].label.toLowerCase()) === 0) return TIERS[i];
+    return TIERS[TIERS.length - 1];
+  }
+
+  var raw = document.getElementById("design-md").textContent.replace(/<\\\/script/gi, "</script");
+  var tmp = document.createElement("div");
+  tmp.innerHTML = marked.parse(raw, { gfm: true });
+  var nodes = Array.prototype.slice.call(tmp.children);
+
+  // Title, intro, then one tab per H2.
+  var i = 0;
+  if (nodes[0] && nodes[0].tagName === "H1") { document.getElementById("doc-title").textContent = nodes[0].textContent; i = 1; }
+  var intro = document.getElementById("intro");
+  while (i < nodes.length && nodes[i].tagName !== "H2") intro.appendChild(nodes[i++]);
+  var tabs = [];
+  for (; i < nodes.length; i++) {
+    if (nodes[i].tagName === "H2") tabs.push({ title: nodes[i].textContent, id: slug(nodes[i].textContent), nodes: [] });
+    else if (tabs.length) tabs[tabs.length - 1].nodes.push(nodes[i]);
+  }
+
+  function enhance(root, tabId) {
+    root.querySelectorAll("table").forEach(function (t) { var w = el("div", "table-wrap"); t.parentNode.insertBefore(w, t); w.appendChild(t); });
+    root.querySelectorAll("pre").forEach(function (pre) {
+      var w = el("div", "code"); pre.parentNode.insertBefore(w, pre); w.appendChild(pre);
+      var code = pre.querySelector("code"); var m = code && /language-(\w+)/.exec(code.className);
+      if (m) w.appendChild(el("span", "lang", m[1]));
+      var b = el("button", "copy", "Copy"); b.type = "button";
+      b.addEventListener("click", function () {
+        var text = pre.innerText;
+        var done = function () { b.textContent = "Copied"; setTimeout(function () { b.textContent = "Copy"; }, 1400); };
+        try { navigator.clipboard.writeText(text).then(done, function () { selectText(pre); }); } catch (e) { selectText(pre); }
+      });
+      w.appendChild(b);
+    });
+    root.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+      var key = tabId + ":" + cb.parentNode.textContent.trim().slice(0, 120);
+      cb.disabled = false;
+      var saved = store(key); if (saved !== null) cb.checked = saved === "1";
+      cb.addEventListener("change", function () { store(key, cb.checked ? "1" : "0"); });
+    });
+    root.querySelectorAll('a[href^="http"]').forEach(function (a) { a.target = "_blank"; a.rel = "noopener"; });
+  }
+  function selectText(node) { var r = document.createRange(); r.selectNodeContents(node); var s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+
+  var tabBar = document.getElementById("tabs");
+  var panels = document.getElementById("panels");
+  var api = {};
+
+  tabs.forEach(function (tab) {
+    var btn = el("button", "tab"); btn.type = "button"; btn.setAttribute("role", "tab"); btn.id = "tab-" + tab.id;
+    btn.appendChild(document.createTextNode(tab.title));
+    var panel = el("section", "panel"); panel.setAttribute("role", "tabpanel"); panel.setAttribute("aria-labelledby", btn.id); panel.hidden = true;
+    tab.btn = btn; tab.panel = panel;
+    tabBar.appendChild(btn); panels.appendChild(panel);
+    if (tab.id === "papers") buildPapers(tab); else buildPage(tab);
+  });
+
+  function buildPage(tab) {
+    var page = el("div", "page"), toc = el("nav", "toc"), content = el("div", "content");
+    toc.setAttribute("aria-label", tab.title + " sections");
+    toc.appendChild(el("div", "label", "On this tab"));
+    tab.nodes.forEach(function (n) {
+      if (n.tagName === "H3") {
+        n.id = tab.id + "--" + slug(n.textContent);
+        var a = el("a"); a.href = "#" + tab.id + "/" + slug(n.textContent); a.textContent = n.textContent; a.dataset.target = n.id;
+        a.addEventListener("click", function (ev) { ev.preventDefault(); go(tab.id, slug(n.textContent)); });
+        toc.appendChild(a);
+      }
+      content.appendChild(n);
+    });
+    enhance(content, tab.id);
+    page.appendChild(toc); page.appendChild(content); tab.panel.appendChild(page);
+    var links = toc.querySelectorAll("a");
+    api[tab.id] = {
+      open: function (sub) {
+        var target = sub && document.getElementById(tab.id + "--" + sub);
+        if (target) target.scrollIntoView({ block: "start" });
+      },
+      spy: function () {
+        var current = null;
+        links.forEach(function (a) { var h = document.getElementById(a.dataset.target); if (h && h.getBoundingClientRect().top < 140) current = a; });
+        links.forEach(function (a) { a.classList.toggle("on", a === current); });
+      }
+    };
+    tab.btn.appendChild(el("span", "n", String(links.length)));
+  }
+
+  function buildPapers(tab) {
+    var introBox = el("div", "content papers-intro"), papers = [], cur = null;
+    tab.nodes.forEach(function (n) {
+      if (n.tagName === "H3") { cur = { title: n.textContent, id: slug(n.textContent), heading: n, nodes: [] }; papers.push(cur); }
+      else if (cur) cur.nodes.push(n); else introBox.appendChild(n);
+    });
+    enhance(introBox, tab.id);
+    // The overview table repeats the panel list, so it starts folded on this page.
+    introBox.querySelectorAll(".table-wrap").forEach(function (w) {
+      var d = el("details", "overview"); d.appendChild(el("summary", null, "All papers at a glance"));
+      w.parentNode.insertBefore(d, w); d.appendChild(w);
+    });
+    tab.panel.appendChild(introBox);
+
+    var wrap = el("div", "papers"), side = el("div", "paper-side"), filters = el("div", "filters"), list = el("div", "paper-list"), detail = el("div", "paper-detail");
+    list.setAttribute("aria-label", "Papers");
+    var active = "all";
+    var chipAll = chip("All", "all"); filters.appendChild(chipAll);
+    TIERS.forEach(function (t) { filters.appendChild(chip(t.label, t.key)); });
+    function chip(label, key) {
+      var c = el("button", "chip", label); c.type = "button"; c.setAttribute("aria-pressed", key === "all" ? "true" : "false");
+      c.addEventListener("click", function () {
+        active = key;
+        filters.querySelectorAll(".chip").forEach(function (x) { x.setAttribute("aria-pressed", x === c ? "true" : "false"); });
+        papers.forEach(function (p) { p.item.hidden = !(key === "all" || p.tier.key === key); });
+      });
+      return c;
+    }
+
+    papers.forEach(function (p, idx) {
+      // The first bullet list of "**Key:** value" lines becomes the spec sheet.
+      var meta = {}, metaList = null;
+      for (var k = 0; k < p.nodes.length; k++) {
+        var n = p.nodes[k];
+        if (n.tagName === "UL" && n.querySelector("li > strong:first-child")) { metaList = n; break; }
+        if (/^H4$/.test(n.tagName)) break;
+      }
+      if (metaList) {
+        metaList.querySelectorAll(":scope > li").forEach(function (li) {
+          var s = li.querySelector("strong"); if (!s) return;
+          var key = s.textContent.replace(/:\s*$/, "").trim(); s.remove();
+          meta[key] = li.innerHTML.trim();
+        });
+        p.nodes.splice(p.nodes.indexOf(metaList), 1);
+      }
+      p.tier = tierOf(meta.Tier ? el("div", null, meta.Tier).textContent : "");
+      var measures = meta.Measures ? el("div", null, meta.Measures).textContent : "";
+
+      var item = el("button", "paper-item"); item.type = "button";
+      item.appendChild(el("span", "badge t-" + p.tier.key, p.tier.label));
+      item.appendChild(el("span", "name", p.title));
+      item.appendChild(el("span", "what", measures.length > 90 ? measures.slice(0, 88) + "…" : measures));
+      item.addEventListener("click", function () { go("papers", p.id); });
+      list.appendChild(item); p.item = item;
+
+      var card = el("article", "paper-card"); card.hidden = true; card.id = "paper--" + p.id;
+      card.appendChild(el("span", "badge t-" + p.tier.key, p.tier.label));
+      card.appendChild(el("h3", null, p.heading.innerHTML));
+      if (meta.Paper) card.appendChild(el("p", "cite", meta.Paper));
+      var specs = el("dl", "specs");
+      var WIDE = { "Measures": 1, "Sensors": 1, "Headline result": 1, "PDF": 1 };
+      ["Measures", "Sensors", "Validated on", "Code / data", "Headline result", "PDF"].forEach(function (key) {
+        if (!meta[key]) return;
+        var s = el("div", "spec" + (WIDE[key] ? " wide" : ""));
+        s.appendChild(el("dt", null, key)); s.appendChild(el("dd", null, meta[key])); specs.appendChild(s);
+      });
+      card.appendChild(specs);
+      var body = el("div", "content");
+      p.nodes.forEach(function (n) { body.appendChild(n); });
+      enhance(body, "papers-" + p.id);
+      card.appendChild(body);
+      var pager = el("div", "pager");
+      if (idx > 0) pager.appendChild(pagerBtn("Previous", papers[idx - 1]));
+      if (idx < papers.length - 1) pager.appendChild(pagerBtn("Next", papers[idx + 1]));
+      card.appendChild(pager);
+      detail.appendChild(card); p.card = card;
+    });
+    function pagerBtn(label, target) {
+      var b = el("button"); b.type = "button";
+      b.innerHTML = "<small>" + label + "</small>" + target.title;
+      b.addEventListener("click", function () { go("papers", target.id); });
+      return b;
+    }
+
+    side.appendChild(filters); side.appendChild(list);
+    wrap.appendChild(side); wrap.appendChild(detail);
+    tab.panel.appendChild(wrap);
+    tab.btn.appendChild(el("span", "n", String(papers.length)));
+
+    api.papers = {
+      open: function (sub, byUser) {
+        var pick = papers.filter(function (p) { return p.id === sub; })[0] || papers[0];
+        papers.forEach(function (p) { p.card.hidden = p !== pick; p.item.setAttribute("aria-current", p === pick ? "true" : "false"); });
+        if (pick.item.hidden) chipAll.click();
+        if (byUser) {
+          // Keep the chosen card's top in view without jumping the page around.
+          var top = wrap.getBoundingClientRect().top + window.scrollY - 64;
+          if (window.scrollY > top) window.scrollTo(0, top);
+          var lr = list.getBoundingClientRect(), ir = pick.item.getBoundingClientRect();
+          if (ir.left < lr.left || ir.right > lr.right) list.scrollLeft += ir.left - lr.left - 8;
+          if (ir.top < lr.top || ir.bottom > lr.bottom) list.scrollTop += ir.top - lr.top - 8;
+        }
+      },
+      spy: function () {}
+    };
+  }
+
+  var current = null;
+  function show(id, sub, byUser) {
+    var tab = tabs.filter(function (t) { return t.id === id; })[0] || tabs[0];
+    tabs.forEach(function (t) { var on = t === tab; t.panel.hidden = !on; t.btn.setAttribute("aria-selected", on ? "true" : "false"); });
+    var switched = current !== tab.id;
+    current = tab.id;
+    if (switched && byUser) {
+      var navTop = panels.getBoundingClientRect().top + window.scrollY - 52;
+      if (window.scrollY > navTop) window.scrollTo(0, navTop);
+    }
+    api[tab.id].open(sub, byUser);
+    store("tab", tab.id);
+    var hash = "#" + tab.id + (sub ? "/" + sub : "");
+    if (location.hash !== hash) history.replaceState(null, "", hash);
+    api[tab.id].spy();
+  }
+  function go(id, sub) { show(id, sub, true); }
+  tabs.forEach(function (t) { t.btn.onclick = function () { go(t.id); }; });
+
+  window.addEventListener("hashchange", function () { route(true); });
+  window.addEventListener("scroll", function () { if (current && api[current]) api[current].spy(); }, { passive: true });
+  function route(byUser) {
+    var h = decodeURIComponent(location.hash.replace(/^#/, ""));
+    if (!h) { show(store("tab") || tabs[0].id, null, byUser); return; }
+    var parts = h.split("/");
+    show(parts[0], parts[1], byUser);
+  }
+  route(false);
+  // A section deep link (#tab/section) still lands on its heading once layout settles.
+  var first = decodeURIComponent(location.hash.replace(/^#/, "")).split("/");
+  if (first[1] && first[0] !== "papers" && api[first[0]]) setTimeout(function () { api[first[0]].open(first[1]); }, 0);
+})();
+</script>
+</body>
+</html>

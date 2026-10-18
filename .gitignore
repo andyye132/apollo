@@ -5,6 +5,16 @@ __pycache__/
 probe-app/build/
 probe-app/debug.keystore
 
+# Gradle / Android Studio
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+captures/
+.cxx/
+.kotlin/
 # MicTest build output, local signing key and recordings
 tools/mictest/build/
 tools/mictest/debug.keystore

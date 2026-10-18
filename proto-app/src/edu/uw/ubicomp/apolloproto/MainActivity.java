@@ -321,9 +321,7 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
     /** ChatPage.Host: what a reply's button does. */
     @Override
     public void act(String action) {
-        if (action.startsWith("dial:")) {
-            startActivity(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + action.substring(5))));
-        } else if (action.startsWith("category:")) {
+        if (action.startsWith("category:")) {
             openCategory(action.substring(9));
         } else if (action.startsWith("care:")) {
             care.tab = action.endsWith("services") ? 1 : 0;

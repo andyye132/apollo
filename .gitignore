@@ -44,3 +44,6 @@ proto-app/assets/face_landmarker.task
 
 # Care: product photos for offline shelves (the stores' images; tools/care_seed.py fetches them)
 proto-app/assets/care/img/
+# Gemini API key and model for the chat (build.sh reads them)
+proto-app/gemini.key
+proto-app/gemini.model

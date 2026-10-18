@@ -709,12 +709,9 @@ final class CarePage {
         bar.setPadding(Ui.dp(a, 16), Ui.dp(a, 10), Ui.dp(a, 10), Ui.dp(a, 10));
         Ui.lift(bar, 4);
         LinearLayout words = Ui.column(a);
-        words.addView(Ui.styled(a, "Emergency?", 15, Ui.CORAL_DARK, 700));
+        words.addView(Ui.styled(a, "Emergency? Call 911.", 15, Ui.CORAL_DARK, 700));   // named, not dialled: no call buttons
         words.addView(Ui.text(a, "Chest pain, trouble breathing, stroke signs", 12.5f, Ui.TEXT, false));
         bar.addView(words, weighted(0));
-        LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        cl.leftMargin = Ui.dp(a, 10);
-        bar.addView(small("Call 911", "call", true, v -> dial("911")), cl);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
         lp.setMargins(Ui.dp(a, 20), 0, Ui.dp(a, 20), Ui.dp(a, 110));
@@ -915,17 +912,13 @@ final class CarePage {
         hours.setBackground(null);
         hours.setPadding(0, 0, 0, 0);
         if (!p.address.isEmpty()) Ui.add(card, Ui.text(a, p.address, 13, Ui.MUTED, false), 4);
+        if (!p.phone.isEmpty()) Ui.add(card, Ui.text(a, "Phone: " + p.phone, 13, Ui.MUTED, false), 4);   // shown, not dialled
         LinearLayout two = Ui.add(card, Ui.row(a), 14);
-        if (!p.phone.isEmpty()) two.addView(small("Call", "call", true, v -> dial(p.phone)), weighted(0));
-        two.addView(small("Directions", "pin", false, v -> directions(p)), weighted(p.phone.isEmpty() ? 0 : 10));
+        two.addView(small("Directions", "pin", false, v -> directions(p)), weighted(0));
         card.setContentDescription(p.name + ", " + p.type.label + ", " + CareLogic.miles(p.km) + ", " + p.hoursText());
     }
 
     // ---- Hand-offs ------------------------------------------------------------------------------
-
-    private void dial(String number) {
-        open(Intent.ACTION_DIAL, "tel:" + number.replaceAll("[^0-9+]", ""));
-    }
 
     private void directions(Nearby.Place p) {
         String at = String.format(Locale.US, "%.6f,%.6f", p.lat, p.lon);

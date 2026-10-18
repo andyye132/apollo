@@ -37,6 +37,9 @@
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
+        <!-- Care: open the delivery apps when installed (else their site inside Apollo). -->
+        <package android:name="com.dd.doordash" />
+        <package android:name="com.ubercab.eats" />
     </queries>
 
     <application

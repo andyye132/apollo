@@ -21,6 +21,7 @@ import android.media.MediaRecorder;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.LinearLayout;
@@ -83,16 +84,24 @@ public class CalmSenseActivity extends Activity implements SensorEventListener {
         sensors = getSystemService(SensorManager.class);
         LinearLayout col = Ui.column(this);
         Ui.add(col, Ui.homeLink(this), 0);
-        Ui.add(col, Ui.label(this, "Experiment · RageSense (CHI 2026)"), 4);
-        Ui.add(col, Ui.title(this, "Calm sensing"), 4);
-        Ui.add(col, Ui.text(this, "The phone's speaker plays a tone too high to hear and its microphone listens to the "
-                + "echoes off your face and hands, like sonar. When your movement rises sharply above your own "
-                + "recent baseline, a short calming message appears.", 15, Ui.MUTED, false), 8);
+        Ui.add(col, Ui.title(this, "Calm sensing"), 6);
+        Ui.add(col, Ui.text(this, "Notices restless movement and nudges you to take a breath.", 16, Ui.MUTED, false), 6);
+        LinearLayout hero = Ui.add(col, Ui.card(this), 18);   // white, like the mascot's own background
+        LinearLayout heroRow = Ui.add(hero, Ui.row(this), 0);
+        heroRow.setGravity(Gravity.CENTER);
+        heroRow.addView(Ui.mascot(this, "calm", 112));
+        View waves = Ui.icon(this, "waves", Ui.LEAF, 84);
+        ((LinearLayout.LayoutParams) waves.getLayoutParams()).leftMargin = Ui.dp(this, 18);
+        heroRow.addView(waves);
+        Info.centred(hero, Info.howItWorks(this, HOW, "Liu et al., RageSense, CHI 2026", "https://doi.org/10.1145/3772318.3791076"), 8);
+        LinearLayout head = Ui.add(col, Ui.row(this), 22);
+        head.addView(Ui.section(this, "Four steps"), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        head.addView(Info.button(this, "Tips", TIPS));
         steps = Ui.add(col, new StepList(this, Ui.ACCENT,
-                "Turn media volume up (most of the way)",
-                "Hold the phone like you're gaming or reading, about 20-30 cm from your face",
-                "Tap Start and use the phone normally; the first 30 s learn your baseline",
-                "A message appears when your movement spikes"), 16);
+                "Turn the volume up most of the way",
+                "Hold the phone like you're reading, 20-30 cm away",
+                "Tap Start and use the phone as usual",
+                "Apollo nudges you when your movement spikes"), 8);
 
         LinearLayout card = Ui.add(col, Ui.card(this), 14);
         status = Ui.add(card, Ui.text(this, "Not running", 18, Ui.TEXT, true), 0);
@@ -105,20 +114,30 @@ public class CalmSenseActivity extends Activity implements SensorEventListener {
         message.setPadding(Ui.dp(this, 18), Ui.dp(this, 16), Ui.dp(this, 18), Ui.dp(this, 16));
         message.setVisibility(View.GONE);
 
-        LinearLayout viz = Ui.add(col, Ui.card(this), 14);
+        // What the sonar sees, for the curious.
+        LinearLayout more = Info.learnMore(col, 10);
+        LinearLayout viz = Ui.add(more, Ui.card(this), 12);
         Ui.add(viz, Ui.label(this, "Echo changes by distance (last 3 s)"), 0);
         heat = new HeatMap(this);
         Ui.add(viz, heat, 8);
         Ui.add(viz, Ui.text(this, "Bright = something moved at that distance from the phone. Top 4 cm, bottom 60 cm.",
                 12, Ui.MUTED, false), 6);
         chart = new ChartView(this, 150).title("Movement index vs your trigger threshold", "");
-        Ui.add(col, chart, 14);
-        Ui.add(col, Ui.text(this, "How this differs from the paper: RageSense predicts emotion (valence and arousal) with a "
-                + "neural network trained on 20 players, which isn't public. This keeps its sensing and its trigger, "
-                + "using a movement index in place of predicted arousal, and shows its fixed fallback messages "
-                + "instead of AI-written ones.", 12, Ui.MUTED, false), 14);
+        Ui.add(more, chart, 12);
+        Info.centred(col, Info.disclaimer(this), 12);
         setContentView(Ui.page(this, col));
     }
+
+    private static final String HOW = "The speaker plays a tone too high for you to hear, and the microphone listens to the echoes "
+            + "off your face and hands, like a bat's sonar. When you fidget or tense up, the echoes change.\n\nApollo learns your "
+            + "usual movement in the first 30 seconds. When it jumps well above that, a short calming message appears.\n\n"
+            + "The paper predicts emotion with a neural network trained on 20 gamers, which isn't public. Apollo keeps its "
+            + "sensing and its trigger, with a movement index in place of predicted arousal and fixed calming messages "
+            + "instead of AI-written ones.";
+    private static final String TIPS = "•  Media volume most of the way up: you won't hear the tone, but the echoes need it.\n"
+            + "•  Keep the phone 20-30 cm from your face, like when gaming or reading.\n"
+            + "•  The first 30 seconds learn your usual movement, so start calm.\n"
+            + "•  No audio is saved, only how much movement the echoes showed.";
 
     @Override
     protected void onPause() {

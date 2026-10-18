@@ -10,7 +10,7 @@ import android.view.View;
 /**
  * Line icons drawn as paths on a 24-unit grid (1.8-unit round strokes), in the style of the design
  * boards: home, measure, journal, trends, heart, thermo, steps, layers, gear, chevron, arrow, watch,
- * waves, play, check, plus, camera, phone, info, moon, back, care, pill, drop, eye, leaf, pin, search, send, call.
+ * waves, play, check, plus, camera, phone, info, moon, back, care, pill, drop, eye, leaf, pin, search, close, send, call.
  */
 final class IconView extends View {
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -234,6 +234,10 @@ final class IconView extends View {
             case "search":
                 circle(c, 10.5f, 10.5f, 6);
                 line(15, 15, 19.5f, 19.5f);
+                break;
+            case "close":
+                line(6.5f, 6.5f, 17.5f, 17.5f);
+                line(17.5f, 6.5f, 6.5f, 17.5f);
                 break;
             case "send":
                 line(12, 19, 12, 5.5f);

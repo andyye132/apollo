@@ -2,7 +2,6 @@ package edu.uw.ubicomp.apolloproto;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
@@ -23,9 +22,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.text.DateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
@@ -111,14 +108,27 @@ public class HeartRateActivity extends Activity implements PpgCamera.Listener, a
 
     // ---- Intro ----------------------------------------------------------------------------------
 
+    private static final String HOW = "Your fingertip is full of tiny blood vessels. Each heartbeat pushes a little more blood "
+            + "into them, so a little less of the flash's light makes it back to the camera. The camera watches that faint "
+            + "pulsing about 30 times a second, and Apollo counts the beats.\n\nIt counts them two ways, from the rhythm of the "
+            + "brightness and from the gaps between beats, and only shows a number when the two agree. The method was "
+            + "checked against a reference monitor at rest and after exercise in the study below.";
+    private static final String TIPS = "•  Sit and rest your hand on a table.\n"
+            + "•  Press lightly. Pressing hard squeezes the blood out and the signal fades.\n"
+            + "•  Slide your finger until the screen shows no red squares. Recording starts by itself.\n"
+            + "•  The phone speaks each step and tells you when it's done.\n"
+            + "•  Comparing with a watch? Wear it on the other arm, rest that arm flat and keep it still.";
+    private static final String[] STEPS = {"Cover the camera and flash with your fingertip", "Hold still while the camera tunes",
+            "Keep still for 20 seconds", "Read your results"};
+
     private void showIntro(String note) {
         phase = Phase.INTRO;
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         LinearLayout col = Ui.column(this);
-        Ui.add(col, Ui.homeLink(this, "curious"), 0);
-        Ui.add(col, Ui.label(this, "Heart rate"), 8);
-        Ui.add(col, Ui.title(this, "Find your\nrhythm."), 6);
-        Ui.add(col, Ui.text(this, "A quick pulse check, with your camera.", 16, Ui.MUTED, false), 6);
+        Ui.add(col, Ui.homeLink(this), 0);
+        TextView title = Ui.add(col, Ui.title(this, "Find your rhythm."), 6);
+        Ui.fitOneLine(title, 32, 24);
+        Ui.add(col, Ui.text(this, "A quick pulse check with your camera.", 16, Ui.MUTED, false), 6);
         LinearLayout hero = Ui.add(col, Ui.card(this), 18);   // white, like the mascot's own background
         LinearLayout heroRow = Ui.add(hero, Ui.row(this), 0);
         heroRow.setGravity(Gravity.CENTER);
@@ -126,40 +136,33 @@ public class HeartRateActivity extends Activity implements PpgCamera.Listener, a
         View phone = Ui.icon(this, "phone", Ui.LEAF, 84);
         ((LinearLayout.LayoutParams) phone.getLayoutParams()).leftMargin = Ui.dp(this, 18);
         heroRow.addView(phone);
-        Ui.add(col, Ui.text(this, "The flash shines into your skin and the camera watches it dim slightly each "
-                + "time your heart pushes blood through. About 30 seconds.", 14, Ui.MUTED, false), 14);
+        Info.centred(hero, Info.howItWorks(this, HOW, "Yan et al., JMIR mHealth 2017", "https://doi.org/10.2196/mhealth.7275"), 8);
         if (note != null) Ui.wrap(col, Ui.badge(this, note, Ui.WARN), 12);
 
-        Ui.add(col, new StepList(this, Ui.HEART,
-                "Cover the camera and the flash with your fingertip (90% covered is enough)",
-                "Hold still while the camera tunes (a few seconds)",
-                "Keep still for 20 seconds of recording",
-                "Read your results"), 16);
-        LinearLayout tips = Ui.add(col, Ui.card(this), 12);
-        Ui.add(tips, Ui.label(this, "Tips"), 0);
-        String[] how = {
-                "•  Sit and rest your hand on a table.",
-                "•  Press lightly: pressing hard squeezes the blood out and the signal disappears.",
-                "•  The screen shows the camera's view: slide your finger until no red squares are left. "
-                        + "Recording starts by itself.",
-                "•  The phone speaks each step and says when it's done. Wearing a Fitbit? It tells you when to glance at it.",
-                "•  Comparing with the watch? Wear it on the other arm from the finger you use, rest that arm flat, keep it still.",
-        };
-        for (String s : how) Ui.add(tips, Ui.text(this, s, 15, Ui.TEXT, false), 8);
-        Ui.add(col, Ui.text(this, "The flash gets warm. Lift your finger any time; the measurement only needs 20 s "
-                + "of steady contact.", 13, Ui.MUTED, false), 12);
-        WatchLink watch = WatchLink.get(this);
-        LinearLayout wc = Ui.add(col, Ui.card(this), 12);
-        Ui.add(wc, Ui.label(this, "Reference watch"), 0);
-        Ui.add(wc, Ui.text(this, watch.streaming() ? "Connected: " + watch.deviceName() + " is recorded alongside the phone."
-                : "Not connected. Optional: connect the WILD watch to compare against it.", 14,
-                watch.streaming() ? Ui.GOOD : Ui.MUTED, false), 6);
-        if (!watch.streaming()) {
-            Ui.add(wc, Ui.button(this, "Connect watch", Ui.ACCENT, false,
-                    v -> startActivity(new Intent(this, WatchActivity.class))), 10);
-        }
+        LinearLayout head = Ui.add(col, Ui.row(this), 22);
+        head.addView(Ui.section(this, "Four steps"), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        head.addView(Info.button(this, "Tips", TIPS));
+        Ui.add(col, new StepList(this, Ui.HEART, STEPS), 8);
+        watchRow(col);
         Ui.add(col, Ui.button(this, "Start", Ui.HEART, true, v -> maybeTemperatureFirst()), 20);
         setContentView(Ui.page(this, col));
+    }
+
+    /** The reference watch, in one line: connected, or a way to connect it. */
+    private void watchRow(LinearLayout col) {
+        WatchLink watch = WatchLink.get(this);
+        LinearLayout r = Ui.add(col, Ui.row(this), 16);
+        r.addView(Ui.icon(this, "watch", watch.streaming() ? Ui.GOOD : Ui.FAINT, 18));
+        TextView t = Ui.styled(this, watch.streaming() ? "Reference watch connected" : "Reference watch not connected", 14,
+                watch.streaming() ? Ui.GOOD : Ui.MUTED, 500);
+        t.setPadding(Ui.dp(this, 8), 0, 0, 0);
+        r.addView(t, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        if (!watch.streaming()) {
+            TextView c = Ui.styled(this, "Connect", 14, Ui.CORAL_DARK, 600);
+            c.setPadding(Ui.dp(this, 10), Ui.dp(this, 6), 0, Ui.dp(this, 6));
+            c.setOnClickListener(v -> startActivity(new Intent(this, WatchActivity.class)));
+            r.addView(c);
+        }
     }
 
     /** Design doc rule: the torch warms the phone, so offer the temperature test first when it hasn't run. */
@@ -169,16 +172,21 @@ public class HeartRateActivity extends Activity implements PpgCamera.Listener, a
         List<JSONObject> fevers = Store.history(this, "forehead");
         if (!fevers.isEmpty()) lastFever = fevers.get(0).optLong("id");
         if (thermal && System.currentTimeMillis() - lastFever > 30 * 60_000) {
-            new AlertDialog.Builder(this)
-                    .setTitle("Taking your temperature too?")
-                    .setMessage("Do it first. The camera light warms the phone and throws off the temperature "
-                            + "reading for about 10 minutes.")
-                    .setPositiveButton("Temperature first", (d, w) -> {
-                        startActivity(new Intent(this, FeverActivity.class));
-                        finish();
-                    })
-                    .setNegativeButton("Just heart rate", (d, w) -> startMeasuring())
-                    .show();
+            Info.Sheet sheet = new Info.Sheet(this);   // Apollo, one brow up, asking
+            Info.centred(sheet.col, Ui.mascot(this, "ask", 120), 8);
+            Ui.add(sheet.col, Ui.styled(this, "Taking your temperature too?", 22, Ui.TEXT, 700), 14).setGravity(Gravity.CENTER);
+            Ui.add(sheet.col, Ui.text(this, "Do it first. The camera's light warms the phone, which throws the temperature "
+                    + "check off for about 10 minutes.", 15, Ui.MUTED, false), 6).setGravity(Gravity.CENTER);
+            Ui.add(sheet.col, Ui.button(this, "Temperature first", Ui.CORAL, true, v -> {
+                sheet.dismiss();
+                startActivity(new Intent(this, FeverActivity.class));
+                finish();
+            }), 22);
+            Ui.add(sheet.col, Ui.button(this, "Just heart rate", Ui.MUTED, false, v -> {
+                sheet.dismiss();
+                startMeasuring();
+            }), 10);
+            sheet.show();
         } else {
             startMeasuring();
         }
@@ -215,12 +223,7 @@ public class HeartRateActivity extends Activity implements PpgCamera.Listener, a
         }
 
         LinearLayout col = Ui.column(this);
-        Ui.add(col, Ui.label(this, "Heart rate"), 0);
-        steps = Ui.add(col, new StepList(this, Ui.HEART,
-                "Cover the camera and the flash with your fingertip (90% covered is enough)",
-                "Hold still while the camera tunes (a few seconds)",
-                "Keep still for 20 seconds of recording",
-                "Read your results"), 8);
+        steps = Ui.add(col, new StepList(this, Ui.HEART, STEPS), 4);
         status = Ui.add(col, Ui.text(this, "Cover the camera completely", 24, Ui.TEXT, true), 12);
         detail = Ui.add(col, Ui.text(this, "", 14, Ui.MUTED, false), 6);
         watchLine = Ui.add(col, Ui.text(this, "", 14, Ui.MUTED, true), 6);
@@ -548,21 +551,42 @@ public class HeartRateActivity extends Activity implements PpgCamera.Listener, a
         LinearLayout col = Ui.column(this);
         boolean poor = "POOR".equals(r.verdict);   // never show an unreliable number big
         boolean good = "GOOD".equals(r.verdict);
-        Ui.add(col, Ui.homeLink(this, poor ? "thinking" : good ? "happy" : "curious"), 0);
-        Ui.add(col, Ui.label(this, "Your pulse check · " + DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(startedAtMs))), 8);
-        Ui.add(col, Ui.title(this, poor ? "Let's give it\nanother moment." : good ? "Hello,\nheartbeat." : "A little faint,\nbut here it is."), 6);
+        Ui.add(col, Ui.homeLink(this), 0);
+        TextView title = Ui.add(col, Ui.title(this, poor ? "Let's try that again." : good ? "Hello, heartbeat." : "A little faint, but here."), 6);
+        Ui.fitOneLine(title, 32, 22);
 
-        LinearLayout head = Ui.add(col, Ui.row(this), 14);
+        LinearLayout head = Ui.add(col, Ui.row(this), 10);
         LinearLayout numCol = Ui.column(this);
-        numCol.addView(Ui.number(this, poor ? "--" : String.format(Locale.US, "%.0f", r.hr), 84));
-        numCol.addView(Ui.text(this, poor ? "No reliable reading" : "beats per minute", 15, Ui.MUTED, false));
+        LinearLayout num = Ui.row(this);
+        num.setGravity(Gravity.BOTTOM);
+        num.addView(Ui.number(this, poor ? "--" : String.format(Locale.US, "%.0f", r.hr), 84));
+        if (!poor) {
+            TextView unit = Ui.styled(this, "bpm", 20, Ui.MUTED, 600);
+            unit.setPadding(Ui.dp(this, 8), 0, 0, Ui.dp(this, 20));
+            num.addView(unit);
+        }
+        numCol.addView(num);
+        Ui.wrap(numCol, Ui.badge(this, verdictText(r.verdict), Ui.verdictColor(r.verdict)), 2);
         head.addView(numCol, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
         head.addView(Ui.mascot(this, poor ? "thinking" : good ? "happy" : "curious", 104));
-        Ui.wrap(col, Ui.badge(this, verdictText(r.verdict), Ui.verdictColor(r.verdict)), 4);
-        Ui.add(col, Ui.text(this, verdictWhy(r), 14, Ui.MUTED, false), 10);
+        if (poor) Ui.add(col, Ui.text(this, verdictWhy(r), 14, Ui.MUTED, false), 10);   // no number: say why up front
 
+        LinearLayout pc = Ui.add(col, Ui.card(this), 18);
+        LinearLayout ph = Ui.add(pc, Ui.row(this), 0);
+        ph.addView(Ui.icon(this, "heart", Ui.CORAL, 18));
+        TextView pt = Ui.styled(this, "Your pulse", 15, Ui.TEXT, 600);
+        pt.setPadding(Ui.dp(this, 7), 0, 0, 0);
+        ph.addView(pt, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        ph.addView(Ui.label(this, "Last 8 seconds"));
+        PulseView pulse = new PulseView(this);
+        Ui.add(pc, pulse, 10).getLayoutParams().height = Ui.dp(this, 130);
+        pulse.set(r.tu, r.pulse, r.peaks, 8);
+
+        // Everything else waits behind "Learn more": why the verdict, comparisons, and the numbers behind it.
+        LinearLayout more = Info.learnMore(col, 10);
+        if (!poor) Ui.add(more, Ui.text(this, verdictWhy(r), 14, Ui.MUTED, false), 4);
         // Reference comparison, the reason this prototype exists.
-        LinearLayout ref = Ui.add(col, Ui.card(this), 16);
+        LinearLayout ref = Ui.add(more, Ui.card(this), 12);
         Ui.add(ref, Ui.label(this, "Compare with your Fitbit"), 0);
         LinearLayout refRow = Ui.add(ref, Ui.row(this), 8);
         EditText input = Ui.numberInput(this, "Fitbit bpm");
@@ -586,7 +610,7 @@ public class HeartRateActivity extends Activity implements PpgCamera.Listener, a
         Ui.add(ref, Ui.text(this, accuracySummary(), 13, Ui.MUTED, false), 6);
 
         if (json.has("watch_samples")) {
-            LinearLayout wc = Ui.add(col, Ui.card(this), 14);
+            LinearLayout wc = Ui.add(more, Ui.card(this), 12);
             Ui.add(wc, Ui.label(this, "Compared with the watch"), 0);
             if (watch == null) {
                 Ui.add(wc, Ui.text(this, "The watch's sensor wasn't sampling (flat signal). Reset the watch.", 14, Ui.WARN, false), 6);
@@ -614,34 +638,7 @@ public class HeartRateActivity extends Activity implements PpgCamera.Listener, a
             }
         }
 
-        // Pulse waveform, last 10 s, with detected beats.
-        ChartView wave = new ChartView(this, 170).title("Pulse waveform, last 10 s", "").hideYAxis();
-        double tEnd = r.tu.length > 0 ? r.tu[r.tu.length - 1] : 0;
-        List<Double> wx = new ArrayList<>(), wy = new ArrayList<>(), bx = new ArrayList<>(), by = new ArrayList<>();
-        for (int i = 0; i < r.tu.length; i++) {
-            if (r.tu[i] < tEnd - 10) continue;
-            wx.add(r.tu[i]);
-            wy.add(r.pulse[i]);
-        }
-        for (int pk : r.peaks) {
-            if (r.tu[pk] < tEnd - 10) continue;
-            bx.add(r.tu[pk]);
-            by.add(r.pulse[pk]);
-        }
-        wave.add(new ChartView.Series(arr(wx), arr(wy), Ui.HEART, false, null));
-        wave.add(new ChartView.Series(arr(bx), arr(by), Ui.ACCENT, true, "beats"));
-        Ui.add(col, wave, 18);
-
-        ChartView trend = new ChartView(this, 150).title("Heart rate over the recording", "bpm").minSpan(10);
-        trend.add(new ChartView.Series(r.beatT, r.beatBpm, Ui.MUTED, true, "each beat"));
-        trend.add(new ChartView.Series(r.winT, r.winBpm, Ui.HEART, false, "10 s window"));
-        Ui.add(col, trend, 14);
-
-        ChartView spec = new ChartView(this, 120).title("Spectrum: the tallest peak is the heart rate", "").xUnit("bpm").hideYAxis();
-        spec.add(new ChartView.Series(r.specBpm, r.specP, Ui.TEXT, false, null));
-        Ui.add(col, spec, 14);
-
-        LinearLayout d = Ui.add(col, Ui.card(this), 18);
+        LinearLayout d = Ui.add(more, Ui.card(this), 12);
         Ui.add(d, Ui.label(this, "Details"), 0);
         d.addView(Ui.kv(this, "From the spectrum", String.format(Locale.US, "%.1f bpm", r.hrSpectrum)));
         d.addView(Ui.kv(this, "From beat intervals", Double.isNaN(r.hrBeats) ? "-" : String.format(Locale.US, "%.1f bpm", r.hrBeats)));
@@ -655,10 +652,9 @@ public class HeartRateActivity extends Activity implements PpgCamera.Listener, a
         d.addView(Ui.kv(this, "Camera", String.format(Locale.US, "%.1f fps · %.2f ms · ISO %d", fps, exposureMs, iso)));
         d.addView(Ui.kv(this, "Recording", String.format(Locale.US, "%.0f s", r.durationS)));
         d.addView(Ui.kv(this, "Raw data", rawFile.getName()));
-        Ui.add(col, Ui.text(this, "Research prototype. Not a medical device. The quality thresholds are our own "
-                + "choices, and accuracy against a reference is what this app is here to find out.", 12, Ui.MUTED, false), 14);
+        Info.centred(col, Info.disclaimer(this), 12);
 
-        LinearLayout buttons = Ui.add(col, Ui.row(this), 18);
+        LinearLayout buttons = Ui.add(col, Ui.row(this), 12);
         LinearLayout.LayoutParams half = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
         buttons.addView(Ui.button(this, "Measure again", Ui.HEART, false, v -> maybeTemperatureFirst()), half);
         LinearLayout.LayoutParams half2 = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);

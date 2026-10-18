@@ -10,6 +10,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
+import android.view.View;
 import android.view.WindowManager;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -84,23 +85,44 @@ public class BreathActivity extends Activity implements SensorEventListener {
 
     // ---- Intro ----------------------------------------------------------------------------------
 
+    private static final String HOW = "Your phone has a tiny air-pressure sensor, a barometer, sealed inside. Blow hard at the screen "
+            + "from a few centimetres away and the glass flexes very slightly, squeezing the air inside: the barometer feels a "
+            + "brief pressure blip.\n\nA harder blow gives a bigger blip. Apollo takes your best three of four blows and compares "
+            + "them with your own earlier results on this phone. It's not a lung function test: lip shape and aim matter too, "
+            + "so your own trend is what means something.";
+    private static final String TIPS = "•  No case pressing on the screen.\n"
+            + "•  Hands off the phone: a touch looks a hundred times bigger than a blow.\n"
+            + "•  Lay a finger on the middle of the screen, put your lips just above it, then lift the finger away.\n"
+            + "•  Keep the same round \"O\", about a finger wide, every time.\n"
+            + "•  Take a full breath and blow as hard and fast as you can. Four blows, 9 seconds apart.";
+
     private void showIntro() {
         LinearLayout col = Ui.column(this);
         Ui.add(col, Ui.homeLink(this), 0);
-        Ui.add(col, Ui.label(this, "Breath strength · Barometer"), 8);
-        Ui.add(col, Ui.title(this, "How hard\ncan you blow?"), 6);
-        Ui.add(col, Ui.text(this, "Compared with your own earlier results on this phone.", 16, Ui.MUTED, false), 6);
+        TextView title = Ui.add(col, Ui.title(this, "A quick lung check."), 6);
+        Ui.fitOneLine(title, 32, 22);
+        Ui.add(col, Ui.text(this, "How hard you can blow, compared with your own usual.", 16, Ui.MUTED, false), 6);
         if (barometer == null) {
             Ui.add(col, Ui.text(this, "This phone has no barometer, so breath strength isn't available on it.", 16, Ui.WARN, false), 18);
             setContentView(Ui.page(this, col));
             return;
         }
+        LinearLayout hero = Ui.add(col, Ui.card(this), 18);   // white, like the mascot's own background
+        LinearLayout heroRow = Ui.add(hero, Ui.row(this), 0);
+        heroRow.setGravity(Gravity.CENTER);
+        heroRow.addView(Ui.mascot(this, "hello", 112));
+        View phone = Ui.icon(this, "phone", Ui.LEAF, 84);
+        ((LinearLayout.LayoutParams) phone.getLayoutParams()).leftMargin = Ui.dp(this, 18);
+        heroRow.addView(phone);
+        Info.centred(hero, Info.howItWorks(this, HOW, "Hafez et al., Barometers Can Hear, 2020", "https://arxiv.org/abs/2008.03872"), 8);
+        LinearLayout head = Ui.add(col, Ui.row(this), 22);
+        head.addView(Ui.section(this, "Four steps"), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        head.addView(Info.button(this, "Tips", TIPS));
         Ui.add(col, new StepList(this, Ui.CORAL,
-                "Lay the phone flat on a table, screen up. No case pressing on the screen.",
-                "Keep your hands off it. A touch looks a hundred times bigger than a blow.",
-                "Lay a finger flat on the middle of the screen, put your lips just above it, then lift the finger away.",
-                "Make a round \"O\" with your lips, about a finger wide. Keep it the same every time.",
-                "When the screen says Blow now, take a full breath and blow as hard and fast as you can. Four blows, 9 s apart."), 16);
+                "Lay the phone flat, screen up, hands off",
+                "Hold your lips just above the middle of the screen",
+                "Make a round \"O\", about a finger wide",
+                "Blow hard four times when it says Blow now"), 8);
         LinearLayout ready = Ui.add(col, Ui.card(this), 14);
         flatText = Ui.add(ready, Ui.styled(this, "", 16, Ui.TEXT, 600), 0);
         List<Double> past = sessions();
@@ -110,8 +132,7 @@ public class BreathActivity extends Activity implements SensorEventListener {
                 : String.format(Locale.US, "Your usual: %.0f Pa (median of your last %d).", base,
                 Math.min(past.size(), BlowDetector.BASELINE_SESSIONS)), 14, Ui.MUTED, false), 6);
         startButton = Ui.add(col, Ui.button(this, "Start (about 40 s)", Ui.CORAL, true, v -> start()), 18);
-        Ui.add(col, Ui.text(this, "Not a lung function test. It tracks how hard you blow compared with yourself on this phone.",
-                12, Ui.MUTED, false), 10);
+        Info.centred(col, Info.disclaimer(this), 12);
         setContentView(Ui.page(this, col));
         showFlat();
     }
@@ -148,8 +169,7 @@ public class BreathActivity extends Activity implements SensorEventListener {
 
         LinearLayout col = Ui.column(this);
         col.setGravity(Gravity.CENTER_HORIZONTAL);
-        Ui.add(col, Ui.label(this, "Breath strength"), 8).setGravity(Gravity.CENTER);
-        cueText = Ui.add(col, Ui.styled(this, "Get ready", 30, Ui.TEXT, 700), 10);
+        cueText = Ui.add(col, Ui.styled(this, "Get ready", 30, Ui.TEXT, 700), 16);
         cueText.setGravity(Gravity.CENTER);
         ring = new RingView(this, false);   // the target: aim at the middle of the screen
         LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -254,10 +274,11 @@ public class BreathActivity extends Activity implements SensorEventListener {
     private void showResult(BlowDetector.Summary s, double base, int before, boolean counts) {
         LinearLayout col = Ui.column(this);
         Ui.add(col, Ui.homeLink(this), 0);
-        Ui.add(col, Ui.label(this, "Breath strength"), 8);
         boolean tooFew = s.quality == BlowDetector.Quality.TOO_FEW;
         boolean redo = tooFew || s.quality == BlowDetector.Quality.INCONSISTENT;
-        Ui.add(col, Ui.title(this, tooFew ? "Let's try that\nagain." : redo ? "Those blows\nvaried a lot." : moved ? "Here's a rough\nresult." : "Nice work."), 6);
+        TextView title = Ui.add(col, Ui.title(this, tooFew ? "Let's try that again." : redo ? "Those blows varied a lot."
+                : moved ? "Here's a rough result." : "Nice work."), 6);
+        Ui.fitOneLine(title, 32, 22);
         LinearLayout head = Ui.add(col, Ui.row(this), 14);
         head.setGravity(Gravity.BOTTOM);
         if (tooFew) {
@@ -283,7 +304,8 @@ public class BreathActivity extends Activity implements SensorEventListener {
         if (s.touches() > 0) Ui.add(col, Ui.text(this, s.touches() == 1 ? "One touch was left out. Keep your hands off the phone."
                 : s.touches() + " touches were left out. Keep your hands off the phone.", 14, Ui.WARN, false), 6);
 
-        LinearLayout d = Ui.add(col, Ui.card(this), 16);
+        LinearLayout more = Info.learnMore(col, 10);
+        LinearLayout d = Ui.add(more, Ui.card(this), 4);
         Ui.add(d, Ui.label(this, "Your blows"), 0);
         List<BlowDetector.Event> blows = s.blows();
         StringBuilder peaks = new StringBuilder();
@@ -293,14 +315,13 @@ public class BreathActivity extends Activity implements SensorEventListener {
         d.addView(Ui.kv(this, "Phone", Build.MODEL));
         if (rawFile != null) d.addView(Ui.kv(this, "Raw data", rawFile.getName()));
 
-        LinearLayout buttons = Ui.add(col, Ui.row(this), 18);
+        Info.centred(col, Info.disclaimer(this), 12);
+        LinearLayout buttons = Ui.add(col, Ui.row(this), 12);
         LinearLayout.LayoutParams half = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
         buttons.addView(Ui.button(this, "Try again", Ui.CORAL, redo, v -> showIntro()), half);
         LinearLayout.LayoutParams half2 = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
         half2.leftMargin = Ui.dp(this, 10);
         buttons.addView(Ui.button(this, "Done", Ui.CORAL, !redo, v -> finish()), half2);
-        Ui.add(col, Ui.text(this, "Not a lung function test. It tracks how hard you blow compared with yourself on this phone.",
-                12, Ui.MUTED, false), 12);
         setContentView(Ui.page(this, col));
     }
 

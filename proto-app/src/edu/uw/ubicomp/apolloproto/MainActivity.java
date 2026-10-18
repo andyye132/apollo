@@ -56,6 +56,7 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
     private static final Class<?>[] STEP_SCREENS = {FeverActivity.class, HeartRateActivity.class, CalmSenseActivity.class, BreathActivity.class};
     private static final String[] STEP_HINTS = {"90 s with the screen on your forehead", "a 20-second fingertip check",
             "a minute of sonar while you hold the phone", "four hard blows at the screen"};
+    private static final String[] STEP_TIMES = {"About 2.5 minutes", "About 30 seconds", "About a minute", "About 40 seconds"};
     private static final int REQ_STEP = 40;   // + step index
     private static final String[] TABS = {"Today", "Care", "Apollo"};
     private static final String[] TAB_ICONS = {"home", "care", null};   // Apollo's is his face
@@ -232,6 +233,8 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
                 ImageView face = Ui.mascot(this, "hello", 34);
                 ((LinearLayout.LayoutParams) face.getLayoutParams()).topMargin = -Ui.dp(this, 5);
                 item.addView(face);
+                item.setClipToPadding(false);   // he rises into the tab's padding: keep his leaf
+                item.setClipChildren(false);
                 navIcons.add(null);
             }
             TextView label = Ui.styled(this, TABS[i], 11, Ui.MUTED, 600);
@@ -377,8 +380,7 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
     private void today(LinearLayout col) {
         LinearLayout head = Ui.add(col, Ui.row(this), 0);
         LinearLayout names = Ui.column(this);
-        names.addView(Ui.label(this, new SimpleDateFormat("EEEE, MMMM d", Locale.US).format(new Date())));
-        TextView title = Ui.add(names, Ui.title(this, "Today at a glance"), 8);
+        TextView title = Ui.add(names, Ui.title(this, "Today at a glance"), 4);
         Ui.fitOneLine(title, 32, 22);
         head.addView(names, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         View gear = Ui.icon(this, "gear", Ui.TEXT, 44);
@@ -391,48 +393,48 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
         gl.gravity = Gravity.BOTTOM;
         head.addView(gear, gl);
 
-        // ---- Tests you take: the check-in runs all four in a row; the tiles start one on its own.
-        sectionHead(col, "Tests you take", "Quick checks you start yourself. A minute or two each.", 26);
+        // ---- The check-in runs all four tests in a row; under it, the tiles start one on its own.
 
-        LinearLayout check = Ui.add(col, Ui.card(this), 14);
-        LinearLayout checkRow = Ui.add(check, Ui.row(this), 0);
-        LinearLayout checkText = Ui.column(this);
-        LinearLayout titleRow = Ui.add(checkText, Ui.row(this), 0);
-        titleRow.addView(Ui.styled(this, "Your check-in", 19, Ui.TEXT, 700));
-        checkInBadge = Ui.badge(this, "Checking", Ui.MUTED);
-        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        bl.leftMargin = Ui.dp(this, 10);
-        titleRow.addView(checkInBadge, bl);
-        checkInText = Ui.add(checkText, Ui.text(this, "", 14.5f, Ui.MUTED, false), 8);
-        LinearLayout progress = Ui.add(checkText, Ui.row(this), 10);   // one dot per test: done today, or not yet
-        int next = nextStep();
-        for (int i = 0; i < STEPS.length; i++) {
-            View dot = new View(this);
-            dot.setBackground(Ui.rounded(stepDone(i) ? Ui.GOOD : i == next ? Ui.CORAL : Ui.LINE, Ui.dp(this, 4)));
-            LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(0, Ui.dp(this, 6), 1);
-            if (i > 0) dl.leftMargin = Ui.dp(this, 5);
-            progress.addView(dot, dl);
-        }
-        Ui.add(checkText, Ui.text(this, next < 0 ? "All 4 done today" : stepsDone() + " of 4 done · next: " + STEPS[next],
-                12.5f, Ui.MUTED, false), 6);
-        LinearLayout go = Ui.add(checkText, Ui.row(this), 12);
-        go.addView(Ui.styled(this, next < 0 ? "See your trends" : stepsDone() == 0 ? "Start check-in" : "Continue: " + STEPS[next],
-                15, Ui.CORAL_DARK, 600));
-        View arrow = Ui.icon(this, "arrow", Ui.CORAL_DARK, 17);
-        ((LinearLayout.LayoutParams) arrow.getLayoutParams()).leftMargin = Ui.dp(this, 6);
-        go.addView(arrow);
-        checkRow.addView(checkText, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        View face = Ui.mascot(this, "wink", 84);   // straight on the card's white
-        ((LinearLayout.LayoutParams) face.getLayoutParams()).leftMargin = Ui.dp(this, 10);
-        checkRow.addView(face);
-        Ui.tappable(check, v -> {
+        // The daily check-in: a ring of the four tests around Apollo, how far along today is, and one button.
+        int next = nextStep(), done = stepsDone();
+        View.OnClickListener go = v -> {
             int n = nextStep();
             if (n >= 0) startStep(n);
             else {
                 sub = "trends";
                 render();
             }
-        });
+        };
+        LinearLayout check = Ui.add(col, Ui.column(this), 22);
+        check.setGravity(Gravity.CENTER_HORIZONTAL);
+        TextView daily = Ui.label(this, "Your daily check-in");
+        daily.setTextColor(Ui.CORAL_DARK);
+        daily.setGravity(Gravity.CENTER);
+        check.addView(daily);
+        FrameLayout ringBox = new FrameLayout(this);
+        CheckInRing ring = new CheckInRing(this);
+        boolean[] doneEach = new boolean[STEPS.length];
+        for (int i = 0; i < STEPS.length; i++) doneEach[i] = stepDone(i);
+        ring.set(doneEach, next);
+        ringBox.addView(ring, new FrameLayout.LayoutParams(Ui.dp(this, 216), Ui.dp(this, 216)));
+        View face = Ui.mascot(this, next < 0 ? "happy" : "hello", 116);   // on the page's ivory, inside the ring
+        ringBox.addView(face, new FrameLayout.LayoutParams(Ui.dp(this, 116), Ui.dp(this, 116), Gravity.CENTER));
+        ringBox.setContentDescription(next < 0 ? "Daily check-in: all 4 tests done" : "Daily check-in: " + done + " of 4 tests done, "
+                + STEPS[next].toLowerCase(Locale.US) + " is next");
+        ringBox.setBackground(Ui.rounded(0x00000000, Ui.dp(this, 108)));
+        Ui.tappable(ringBox, go);
+        LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(Ui.dp(this, 216), Ui.dp(this, 216));
+        rl.topMargin = Ui.dp(this, 12);
+        check.addView(ringBox, rl);
+        Ui.add(check, Ui.styled(this, next < 0 ? "All 4 done" : done == 0 ? "4 quick tests" : done + " of 4 done", 24, Ui.TEXT, 700), 14)
+                .setGravity(Gravity.CENTER);
+        checkInText = Ui.add(check, Ui.text(this, "", 15, Ui.MUTED, false), 4);
+        checkInText.setGravity(Gravity.CENTER);
+        checkInText.setSingleLine(true);   // what's next, in one line
+        checkInText.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        Ui.add(check, Ui.button(this, next < 0 ? "See your trends" : done == 0 ? "Start your check-in" : "Continue your check-in",
+                Ui.CORAL, true, go), 16);
+        Ui.add(col, Ui.styled(this, "Take a specific test", 21, Ui.TEXT, 700), 28);
 
         LinearLayout tests = Ui.add(col, Ui.row(this), 12);
         tests.setBaselineAligned(false);
@@ -1051,20 +1053,20 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
         String v = s.verdict;
         int color = "READY".equals(v) ? Ui.GOOD : v == null || "UNSUPPORTED".equals(v) ? Ui.MUTED : Ui.WARN;
         if (tempStatus != null) Ui.setChip(tempStatus, "READY".equals(v) ? "Phone ready" : Ui.readyLabel(v), color == Ui.MUTED ? Ui.FAINT : color);
-        if (checkInBadge != null) {
+        if (checkInText != null) {
             int next = nextStep();
             if (next < 0) {
-                restyle(checkInBadge, "Done", Ui.GOOD);
-                checkInText.setText("All four tests are in for today. Nicely done.");
+                if (checkInBadge != null) restyle(checkInBadge, "Done", Ui.GOOD);
+                checkInText.setText("All four are in for today. Nicely done.");
             } else if (next == 0) {   // temperature is next: it's the one that needs a settled phone
-                restyle(checkInBadge, Ui.readyLabel(v), color);
-                checkInText.setText("READY".equals(v) ? "Your phone is still and steady: a good moment to start with temperature."
-                        : "TOO_WARM".equals(v) ? "Your phone is a little warm. Give it a few minutes on the table, then start."
-                        : "BLOCKED".equals(v) ? "Unplug the charger first. Charging warms the phone."
-                        : "All four tests in a row, temperature first. Leave the phone flat for a minute so it can settle.");
+                if (checkInBadge != null) restyle(checkInBadge, Ui.readyLabel(v), color);
+                checkInText.setText("READY".equals(v) ? "Temperature is first. Your phone is ready."
+                        : "TOO_WARM".equals(v) ? "Temperature is first. Let the phone cool a bit."
+                        : "BLOCKED".equals(v) ? "Temperature is first. Unplug the charger."
+                        : "Temperature is first. Let the phone settle.");
             } else {
-                restyle(checkInBadge, stepsDone() + " of 4", Ui.CORAL);
-                checkInText.setText("Next: " + STEPS[next].toLowerCase(Locale.US) + ", " + STEP_HINTS[next] + ".");
+                if (checkInBadge != null) restyle(checkInBadge, stepsDone() + " of 4", Ui.CORAL);
+                checkInText.setText(STEPS[next] + " is next. " + STEP_TIMES[next] + ".");
             }
         }
         if (phoneText != null && !Double.isNaN(s.phoneC)) {

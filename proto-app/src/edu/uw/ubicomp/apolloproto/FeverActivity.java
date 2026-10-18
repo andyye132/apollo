@@ -9,7 +9,6 @@ import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -22,9 +21,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.text.DateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -61,10 +58,9 @@ public class FeverActivity extends Activity implements ThermalMonitor.Listener {
     private PrintWriter raw;
     private File rawFile;
     private TextView statusText, phaseText, nextText, stepLabel;
-    private Ui.Readiness readiness;
+    private TextView readyChip;
     private RingView countdown;
     private TextView startButton, anywayButton;
-    private LinearLayout calibrateRow;
     private final List<double[]> stillLog = new ArrayList<>();   // {t from Start, still 1/0} before Start
 
     private final Runnable tick = new Runnable() {
@@ -120,15 +116,27 @@ public class FeverActivity extends Activity implements ThermalMonitor.Listener {
 
     // ---- Intro ----------------------------------------------------------------------------------
 
+    private static final String HOW = "Your forehead is warmer than the phone. Press the screen to it and heat flows into the "
+            + "glass, where the phone's own temperature sensors feel it. The warmer you are, the faster the phone warms.\n\n"
+            + "Apollo times that warming for 90 seconds, takes away the phone's own drift, and turns the rate into a body "
+            + "temperature with your calibration or its trained model. The method comes from FeverPhone, a University of "
+            + "Washington study.";
+    private static final String TIPS = "•  Turn on airplane mode and take the phone out of its case.\n"
+            + "•  You won't see the screen, so the phone talks you through it: a buzz means press now, then it counts down "
+            + "60, 30 and 10 seconds. A buzz and \"Done\" mean finished.\n"
+            + "•  Do it the way you calibrated: same grip, same firmness, same spot.\n"
+            + "•  The screen ignores touches during the test. Press Back to cancel.\n"
+            + "•  Don't cool the phone in a fridge: it warms unevenly for 20 minutes or more. Let it rest on a table.";
+
     private void showIntro(String note) {
         phase = Phase.INTRO;
         restoreScreen();
         holdForBaseline();
         LinearLayout col = Ui.column(this);
-        Ui.add(col, Ui.homeLink(this, "curious"), 0);
-        Ui.add(col, Ui.label(this, "Temperature · FeverPhone"), 8);
-        Ui.add(col, Ui.title(this, "A gentle\ntemperature check."), 6);
-        Ui.add(col, Ui.text(this, "Let Apollo guide you, one step at a time. About 2.5 minutes.", 16, Ui.MUTED, false), 6);
+        Ui.add(col, Ui.homeLink(this), 0);
+        TextView title = Ui.add(col, Ui.title(this, "A gentle temperature check."), 6);
+        Ui.fitOneLine(title, 32, 20);
+        Ui.add(col, Ui.text(this, "About 2.5 minutes. Apollo talks you through it.", 16, Ui.MUTED, false), 6);
         LinearLayout hero = Ui.add(col, Ui.card(this), 18);   // white, like the mascot's own background
         LinearLayout heroRow = Ui.add(hero, Ui.row(this), 0);
         heroRow.setGravity(Gravity.CENTER);
@@ -136,46 +144,57 @@ public class FeverActivity extends Activity implements ThermalMonitor.Listener {
         View phone = Ui.icon(this, "phone", Ui.LEAF, 84);
         ((LinearLayout.LayoutParams) phone.getLayoutParams()).leftMargin = Ui.dp(this, 18);
         heroRow.addView(phone);
-        Ui.add(col, Ui.text(this, "Your forehead warms the phone through the screen. How fast it warms is what "
-                + "FeverPhone (UW Ubicomp, 2023) turns into a temperature.", 14, Ui.MUTED, false), 14);
+        Info.centred(hero, Info.howItWorks(this, HOW, "Breda et al., FeverPhone, IMWUT 2023", "https://doi.org/10.1145/3580850"), 8);
         if (note != null) Ui.wrap(col, Ui.badge(this, note, Ui.WARN), 12);
 
-        int runs = FeverCalibration.runs(this, "UNPLUGGED|hand");   // tests run unplugged (at 100% on a cable borrows these)
-        Ui.add(col, Ui.text(this, runs > 0 ? "Calibrated: " + runs + " run" + (runs == 1 ? "" : "s") + " ✓"
-                : "Not calibrated yet: do \"Calibrate temperature\" on the home screen first", 13, runs > 0 ? Ui.GOOD : Ui.WARN, true), 14);
+        LinearLayout head = Ui.add(col, Ui.row(this), 22);
+        head.addView(Ui.section(this, "Four steps"), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        head.addView(Info.button(this, "Before you start", TIPS));
         introSteps = Ui.add(col, new StepList(this, Ui.TEMP,
-                "Leave the phone on the table, untouched, until it's ready (green, below)",
-                table ? "Tap Start. You have 10 seconds to get your forehead over the phone"
-                        : "Tap Start, then pick the phone up by its edges. You have 10 seconds",
-                table ? "When the phone says so, lean on your elbows and rest your forehead on the screen for 90 seconds"
-                        : "When the phone says so, press the screen to your forehead for 90 seconds",
-                "Read your results"), 16);
+                "Leave the phone on a table until it's ready",
+                table ? "Tap Start, then get your forehead over the phone" : "Tap Start, then pick the phone up by its edges",
+                table ? "At the buzz, rest your forehead on the screen for 90 seconds"
+                        : "At the buzz, press the screen to your forehead for 90 seconds",
+                "Read your results"), 8);
 
-        readiness = new Ui.Readiness(this);
-        Ui.add(col, readiness.card, 12);
-        statusText = readiness.message;
-        phaseText = readiness.detail;
+        // Is the phone ready? One line, right above Start; the numbers behind it wait under the (i).
+        LinearLayout ready = Ui.add(col, Ui.row(this), 20);
+        readyChip = Ui.chip(this, "Checking", Ui.FAINT);
+        ready.addView(readyChip);
+        ready.addView(Ui.space(this));
+        IconView more = Ui.icon(this, "info", Ui.MUTED, 32);
+        int pad = Ui.dp(this, 6);
+        more.setPadding(pad, pad, pad, pad);
+        more.setBackground(Ui.rounded(0x00000000, Ui.dp(this, 16)));
+        more.setContentDescription("About the phone's readiness");
+        Ui.tappable(more, v -> new Info.Sheet(this).title("Is the phone ready?").body(readinessDetail()).show());
+        ready.addView(more);
+        statusText = Ui.add(col, Ui.text(this, "", 14, Ui.MUTED, false), 4);
+        int runs = FeverCalibration.runs(this, "UNPLUGGED|hand");   // tests run unplugged (at 100% on a cable borrows these)
+        if (runs == 0) {
+            TextView cal = Ui.add(col, Ui.styled(this, "Not calibrated yet: calibrate once first  ›", 14, Ui.CORAL_DARK, 600), 8);
+            cal.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+            cal.setOnClickListener(v -> startActivity(new android.content.Intent(this, CalibrateActivity.class)));
+        }
 
-        LinearLayout tips = Ui.add(col, Ui.card(this), 12);
-        Ui.add(tips, Ui.label(this, "Before you start"), 0);
-        String[] how = {
-                "•  Turn on airplane mode and take the phone out of its case.",
-                "•  You won't see the screen on your forehead, so the phone talks you through it: a buzz means press "
-                        + "now, then it counts down 60, 30 and 10 seconds and the last 5. A buzz and \"Done\" mean finished.",
-                "•  Do it exactly like the calibration: same grip, same firmness, same spot.",
-                "•  The screen ignores touches during the test. Press Back to cancel.",
-                "•  Have a thermometer? Take your temperature afterwards and type it into the results.",
-        };
-        for (String s : how) Ui.add(tips, Ui.text(this, s, 15, Ui.TEXT, false), 8);
-        Ui.add(col, Ui.text(this, "Do this before a heart-rate test: the camera light warms the phone.", 13, Ui.MUTED, false), 12);
-
-        startButton = Ui.add(col, Ui.button(this, "Start", Ui.TEMP, true, v -> start(false)), 20);
+        startButton = Ui.add(col, Ui.button(this, "Start", Ui.TEMP, true, v -> start(false)), 14);
         anywayButton = Ui.add(col, Ui.button(this, "Start anyway", Ui.MUTED, false, v -> start(true)), 10);
-        Ui.add(col, Ui.text(this, "Starting on a phone that is still warming or cooling gives wrong readings (a chilled phone read "
-                + "4 °F low). Don't cool it in a fridge: it warms unevenly for 20+ minutes and can collect condensation. "
-                + "Let it sit on the table instead.", 12, Ui.MUTED, false), 6);
         setContentView(Ui.page(this, col));
         updateIntro();
+    }
+
+    /** What's behind the readiness line: the phone's temperature, its drift, power, airplane mode and calibration. */
+    private String readinessDetail() {
+        ThermalMonitor.State s = monitor.state();
+        boolean airplane = Settings.Global.getInt(getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 0) == 1;
+        int runs = FeverCalibration.runs(this, "UNPLUGGED|hand");
+        return String.format(Locale.US, "%s\n\nPhone temperature: %s\nIts own drift: %s\nPower: %s\nAirplane mode: %s\nCalibration: %s\n\n"
+                        + "Starting while the phone is still warming or cooling gives wrong readings (a chilled phone read 4 °F low), "
+                        + "so Start waits until it's steady.", s.message,
+                Double.isNaN(s.phoneC) ? "-" : String.format(Locale.US, "%.1f °C", s.phoneC),
+                Double.isNaN(s.driftCPerMin) ? "-" : String.format(Locale.US, "%+.2f °C a minute", s.driftCPerMin),
+                s.powerMode.toLowerCase(Locale.US), airplane ? "on" : "off",
+                runs > 0 ? runs + " run" + (runs == 1 ? "" : "s") : "not yet");
     }
 
     private void setProtocol(boolean onTable) {
@@ -198,12 +217,8 @@ public class FeverActivity extends Activity implements ThermalMonitor.Listener {
         if (statusText == null) return;
         ThermalMonitor.State s = monitor.state();
         boolean ready = "READY".equals(s.verdict), unsupported = "UNSUPPORTED".equals(s.verdict);
-        readiness.show(s, "");
-        boolean airplane = Settings.Global.getInt(getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 0) == 1;
-        phaseText.setText(String.format(Locale.US, "Phone %s · %s · power: %s · airplane mode %s",
-                Double.isNaN(s.phoneC) ? "-" : String.format(Locale.US, "%.1f °C", s.phoneC),
-                Double.isNaN(s.driftCPerMin) ? "drift -" : String.format(Locale.US, "%+.2f °C/min", s.driftCPerMin),
-                s.powerMode.toLowerCase(Locale.US), airplane ? "on" : "OFF"));
+        Ui.setChip(readyChip, ready ? "Phone ready" : Ui.readyLabel(s.verdict), ready ? Ui.GOOD : unsupported || s.verdict == null ? Ui.FAINT : Ui.WARN);
+        statusText.setText(s.message);
         if (introSteps != null) introSteps.setCurrent(ready ? 1 : 0);
         startButton.setAlpha(ready ? 1f : 0.35f);
         startButton.setEnabled(ready);
@@ -461,8 +476,7 @@ public class FeverActivity extends Activity implements ThermalMonitor.Listener {
     private void showReport(FeverAnalysis.Report rep, JSONObject json, Map<String, FeverAnalysis.Series> series) {
         phase = Phase.REPORT;
         LinearLayout col = Ui.column(this);
-        Ui.add(col, Ui.homeLink(this, rep.best == null ? "thinking" : "happy"), 0);
-        Ui.add(col, Ui.label(this, "Forehead warming test · " + DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(startMs))), 8);
+        Ui.add(col, Ui.homeLink(this), 0);
         if (rep.best == null) {
             Ui.add(col, Ui.title(this, "No thermistor data"), 6);
             Ui.add(col, Ui.text(this, "The phone didn't report thermistor readings. One-time setup from a computer: "
@@ -475,35 +489,32 @@ public class FeverActivity extends Activity implements ThermalMonitor.Listener {
         Outcome oc = outcome(rep);
         saveOutcome(oc, json);
         boolean shaky = Double.isNaN(oc.core) || oc.unreliable != null;
-        Ui.add(col, Ui.title(this, Double.isNaN(oc.core) ? (oc.redo ? "Let's try that\nagain." : "No reading\nthis time.")
-                : oc.unreliable != null ? "Here's a rough\nreading." : "Check-in\ncomplete."), 6);
-        LinearLayout head = Ui.add(col, Ui.row(this), 14);
+        TextView title = Ui.add(col, Ui.title(this, Double.isNaN(oc.core) ? (oc.redo ? "Let's try that again." : "No reading this time.")
+                : oc.unreliable != null ? "Here's a rough reading." : "Check-in complete."), 6);
+        Ui.fitOneLine(title, 32, 22);
+        LinearLayout head = Ui.add(col, Ui.row(this), 10);
         LinearLayout numCol = Ui.column(this);
         head.addView(numCol, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
         head.addView(Ui.mascot(this, Double.isNaN(oc.core) ? "wink" : shaky ? "thinking" : oc.fever ? "curious" : "happy", 100));
-        head = Ui.row(this);
-        head.setGravity(Gravity.BOTTOM);
-        numCol.addView(head);
+        LinearLayout num = Ui.row(this);
+        num.setGravity(Gravity.BOTTOM);
+        numCol.addView(num);
         if (!Double.isNaN(oc.core)) {
-            head.addView(Ui.number(this, String.format(Locale.US, "%.1f", oc.core), 72));
-            TextView unit = Ui.styled(this, String.format(Locale.US, "°C\n%.1f °F", oc.core * 9 / 5 + 32), 15, Ui.MUTED, 500);
-            unit.setPadding(Ui.dp(this, 8), 0, 0, Ui.dp(this, 12));
-            head.addView(unit);
+            TextView value = Ui.number(this, "", 72);
+            num.addView(value);
+            LinearLayout.LayoutParams ul = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            ul.setMargins(Ui.dp(this, 10), 0, 0, Ui.dp(this, 18));
+            num.addView(unitToggle(value, oc.core), ul);
             Ui.wrap(numCol, Ui.badge(this, oc.unreliable != null ? "Rough reading" : "✓  Good reading",
-                    oc.unreliable != null ? Ui.WARN : Ui.GOOD), 8);
-            Ui.add(col, Ui.text(this, !Double.isNaN(oc.forest) ? "Your body temperature, from Apollo's temperature model."
-                    : "Your body temperature, from your calibration.", 14, Ui.MUTED, false), 2);
+                    oc.unreliable != null ? Ui.WARN : Ui.GOOD), 4);
             if (oc.unreliable != null) {
-                Ui.add(col, Ui.text(this, oc.unreliable, 14, Ui.WARN, false), 6);
+                Ui.add(col, Ui.text(this, oc.unreliable, 14, Ui.WARN, false), 8);
                 Ui.add(col, Ui.button(this, "Take it again", Ui.TEMP, false, v -> showIntro(null)), 10);
             }
             if (oc.fever) Ui.wrap(col, Ui.badge(this, "Possible fever: check with a thermometer", Ui.BAD), 8);
             if (oc.fromArm) Ui.wrap(col, Ui.badge(this, "Using the arm calibration: forehead contact differs, so this may be offset", Ui.WARN), 8);
         } else {
-            head.addView(Ui.number(this, "--", 72));
-            TextView unit = Ui.styled(this, "°C", 15, Ui.MUTED, 500);
-            unit.setPadding(Ui.dp(this, 8), 0, 0, Ui.dp(this, 12));
-            head.addView(unit);
+            num.addView(Ui.number(this, "--", 72));
             Ui.add(col, Ui.text(this, oc.redo ? oc.noNumber : "No temperature this time. " + oc.noNumber, 16, Ui.WARN, false), 4);
             if (oc.redo) Ui.add(col, Ui.button(this, "Try again", Ui.TEMP, true, v -> showIntro(null)), 12);
             if (oc.notCalibrated && !oc.redo) {
@@ -521,55 +532,14 @@ public class FeverActivity extends Activity implements ThermalMonitor.Listener {
                 }
             }
         }
-        Ui.add(col, Ui.text(this, String.format(Locale.US, "Your forehead warmed the phone %+.2f °C over 90 s (%+.2f °C/min after the "
-                + "phone's own drift).", b.riseC, b.correctedCPerMin), 13, Ui.MUTED, false), 8);
+        Ui.add(col, Ui.text(this, String.format(Locale.US, "Your forehead warmed the phone %+.2f °C over 90 s.", b.riseC),
+                15, Ui.TEXT, false), 14);
 
-        LinearLayout ins = Ui.add(col, Ui.card(this), 16);
-        Ui.add(ins, Ui.label(this, "What this tells you"), 0);
-        for (String line : insights(rep, json)) Ui.add(ins, Ui.text(this, "•  " + line, 15, Ui.TEXT, false), 8);
-
-        LinearLayout cal = Ui.add(col, Ui.card(this), 14);
-        Ui.add(cal, Ui.label(this, "Your thermometer, body temperature (optional)"), 0);
-        Ui.add(cal, Ui.text(this, "Type its normal (body) reading, in °C or °F, to compare with the phone. You can then also use "
-                + "it to calibrate this way of measuring.", 13, Ui.MUTED, false), 6);
-        LinearLayout refRow = Ui.add(cal, Ui.row(this), 8);
-        EditText input = Ui.numberInput(this, "°C, e.g. 36.8");
-        refRow.addView(input, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
-        TextView out = Ui.text(this, "", 14, Ui.TEXT, false);
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        sp.leftMargin = Ui.dp(this, 10);
-        refRow.addView(Ui.button(this, "Save", Ui.ACCENT, false, v -> {
-            try {
-                double c = Double.parseDouble(input.getText().toString());
-                if (c > 50) c = (c - 32) * 5 / 9;   // typed in Fahrenheit
-                json.put("ref_c", Math.round(c * 100) / 100.0);
-                Store.save(this, json);
-                String vs = !Double.isNaN(oc.core) ? String.format(Locale.US, " The phone said %.1f °C (%.1f °F): %+.1f °C (%+.1f °F) off.",
-                        oc.core, oc.core * 9 / 5 + 32, oc.core - c, (oc.core - c) * 9 / 5) : "";
-                out.setText(String.format(Locale.US, "Saved %.1f °C (%.1f °F).%s", c, c * 9 / 5 + 32, vs));
-                if (oc.usableForCalibration && calibrateRow.getChildCount() == 0) {
-                    final double body = c;
-                    calibrateRow.addView(Ui.button(this, "Also use it to calibrate " + (table ? "\"On a table\"" : "\"Hand-held\""), Ui.TEMP, false, b2 -> {
-                        if (json.has("calibration_body_c")) return;
-                        int used = FeverCalibration.add(this, calibKey(), rep, SkinToCore.skinFor(body));
-                        try {
-                            json.put("calibration_body_c", r3(body));
-                            json.put("calibration_ref_c", r3(SkinToCore.skinFor(body)));
-                            Store.save(this, json);
-                        } catch (JSONException ignored) {
-                        }
-                        out.setText(used == 0 ? "Couldn't calibrate: no sensor warmed enough." : String.format(Locale.US,
-                                "Added as calibration run %d for this way of measuring.", FeverCalibration.runs(this, calibKey())));
-                    }), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-                }
-            } catch (NumberFormatException | JSONException e) {
-                out.setText("Type a number first");
-            }
-        }), sp);
-        Ui.add(cal, out, 8);
-        calibrateRow = Ui.add(cal, Ui.column(this), 8);
-        if (!Double.isNaN(oc.core) && oc.e != null) detailsCard(col, oc);
-
+        // The rest (how the number was made, the curves, the sensors, the conditions) waits behind "Learn more".
+        LinearLayout more = Info.learnMore(col, 8);
+        Ui.add(more, Ui.text(this, String.format(Locale.US, "That's %+.2f °C a minute once the phone's own drift (%+.2f °C a minute) "
+                + "is taken away.", b.correctedCPerMin, b.driftCPerMin), 14, Ui.MUTED, false), 4);
+        if (!Double.isNaN(oc.core) && oc.e != null) detailsCard(more, oc);
         // Curves: change from contact start for the three cleanest sensors.
         ChartView chart = new ChartView(this, 210).title("Thermistors, change since the forehead touched", "°C").minSpan(1);
         chart.band(-40, 0, 0x0A000000, "baseline");
@@ -587,16 +557,16 @@ public class FeverActivity extends Activity implements ThermalMonitor.Listener {
             }
             chart.add(new ChartView.Series(x, y, colors[i], false, rep.sensors.get(i).name));
         }
-        Ui.add(col, chart, 18);
+        Ui.add(more, chart, 12);
 
-        LinearLayout t = Ui.add(col, Ui.card(this), 14);
+        LinearLayout t = Ui.add(more, Ui.card(this), 12);
         Ui.add(t, Ui.label(this, "Sensors, cleanest first"), 0);
         for (int i = 0; i < Math.min(5, rep.sensors.size()); i++) {
             FeverAnalysis.SensorResult s = rep.sensors.get(i);
             t.addView(Ui.kv(this, s.name, String.format(Locale.US, "%+.2f °C/min · rise %+.2f · SNR %.0f%s",
                     s.correctedCPerMin, s.riseC, s.snr, s.coarse ? " (coarse)" : "")));
         }
-        LinearLayout d = Ui.add(col, Ui.card(this), 14);
+        LinearLayout d = Ui.add(more, Ui.card(this), 12);
         Ui.add(d, Ui.label(this, "Conditions"), 0);
         d.addView(Ui.kv(this, "Phone at the start", String.format(Locale.US, "%.2f °C (%s)", b.startC, b.name)));
         d.addView(Ui.kv(this, table ? "Phone's own drift (on the table)" : "Phone's own drift (in the hand)", String.format(Locale.US, "%+.2f °C/min", b.driftCPerMin)));
@@ -611,39 +581,34 @@ public class FeverActivity extends Activity implements ThermalMonitor.Listener {
         }
         if (oc.check != null) d.addView(Ui.kv(this, "Motion during the reading", oc.check.movingS == 0 ? "steady"
                 : oc.check.movingS + " s moving"));
-        Ui.add(col, Ui.text(this, "Research prototype, not a medical device.", 12, Ui.MUTED, false), 14);
+        Info.centred(col, Info.disclaimer(this), 12);
 
-        LinearLayout buttons = Ui.add(col, Ui.row(this), 18);
+        LinearLayout buttons = Ui.add(col, Ui.row(this), 12);
         LinearLayout.LayoutParams half = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
-        buttons.addView(Ui.button(this, "Back to intro", Ui.TEMP, false, v -> showIntro(null)), half);
+        buttons.addView(Ui.button(this, "Measure again", Ui.TEMP, false, v -> showIntro(null)), half);
         LinearLayout.LayoutParams half2 = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
         half2.leftMargin = Ui.dp(this, 10);
         buttons.addView(Ui.button(this, "Done", Ui.TEMP, true, v -> finish()), half2);
         setContentView(Ui.page(this, col));
     }
 
-    private List<String> insights(FeverAnalysis.Report rep, JSONObject json) {
-        FeverAnalysis.SensorResult b = rep.best;
-        List<String> out = new ArrayList<>();
-        out.add(String.format(Locale.US, "Over 90 s your forehead warmed the phone by %+.2f °C (%s), a rate of %+.2f °C/min "
-                + "after removing the phone's own drift of %+.2f °C/min.", b.riseC, b.name, b.correctedCPerMin, b.driftCPerMin));
-        List<Double> past = new ArrayList<>();
-        for (JSONObject o : Store.history(this, "forehead")) {
-            if (o.optLong("id") == startMs || o.optBoolean("unreliable")) continue;
-            if (!o.optString("power_mode").equals(json.optString("power_mode"))) continue;
-            if (!o.optString("protocol", "hand").equals(protocol())) continue;
-            past.add(o.optDouble("rate_c_per_min"));
-        }
-        if (past.isEmpty()) {
-            out.add("This is your first reading in this power mode and protocol. A few readings on normal days give you a personal baseline to compare against.");
-        } else {
-            double[] p = new double[past.size()];
-            for (int i = 0; i < p.length; i++) p[i] = past.get(i);
-            double med = Dsp.median(p);
-            out.add(String.format(Locale.US, "Your usual rate is %+.2f °C/min (median of %d). This one is %+.0f%%: "
-                    + "faster warming means a warmer forehead.", med, p.length, 100 * (b.correctedCPerMin - med) / Math.abs(med)));
-        }
-        return out;
+    /** The unit, in a pill beside the reading: tap it to switch °C and °F (remembered). */
+    private TextView unitToggle(TextView value, double celsius) {
+        TextView u = Ui.styled(this, "", 20, Ui.CORAL_DARK, 700);
+        u.setBackground(Ui.rounded(Ui.CORAL_TINT, Ui.dp(this, 100)));
+        u.setPadding(Ui.dp(this, 14), Ui.dp(this, 6), Ui.dp(this, 14), Ui.dp(this, 6));
+        Runnable show = () -> {
+            boolean f = Store.prefs(this).getBoolean("temp_in_f", false);
+            value.setText(String.format(Locale.US, "%.1f", f ? celsius * 9 / 5 + 32 : celsius));
+            u.setText(f ? "°F" : "°C");
+            u.setContentDescription((f ? "Fahrenheit" : "Celsius") + ". Tap to switch.");
+        };
+        show.run();
+        Ui.tappable(u, v -> {
+            Store.prefs(this).edit().putBoolean("temp_in_f", !Store.prefs(this).getBoolean("temp_in_f", false)).apply();
+            show.run();
+        });
+        return u;
     }
 
     /** What a run amounts to: a temperature, or the reason there isn't one. */

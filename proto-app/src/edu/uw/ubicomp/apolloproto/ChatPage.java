@@ -65,21 +65,15 @@ final class ChatPage {
     void build(LinearLayout col, ScrollView scroll) {
         this.scroll = scroll;
         LinearLayout head = Ui.add(col, Ui.row(a), 6);
-        headFace = Ui.mascot(a, mood(lastReply()), 64);
-        head.addView(headFace);
-        LinearLayout names = Ui.column(a);
-        TextView t = Ui.styled(a, "A little perspective.", 26, Ui.TEXT, 700);
-        names.addView(t);
-        Ui.add(names, Ui.text(a, "Apollo · on this phone", 14.5f, Ui.MUTED, false), 3);
-        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        nl.leftMargin = Ui.dp(a, 12);
-        head.addView(names, nl);
+        headFace = null;   // his face is beside each of his messages; the title stands alone
+        TextView t = Ui.title(a, "Chat with Apollo");
+        Ui.fitOneLine(t, 32, 22);
+        head.addView(t, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        head.addView(Info.button(a, "What Apollo knows", "Apollo can see your latest heart rate, temperature, steps and breath "
+                + "results, and what you tell it here. He lives on this phone: nothing you say leaves it.\n\nHe helps you "
+                + "reflect on your readings and points you to the right screen. He doesn't diagnose. In an emergency, call 911."));
 
-        LinearLayout note = Ui.add(col, Ui.tintCard(a, Ui.CORAL_TINT), 18);
-        note.addView(Ui.text(a, "Apollo can see your latest heart rate, temperature and steps. Nothing leaves this phone.",
-                14, Ui.CORAL_DARK, false));
-
-        thread = Ui.add(col, Ui.column(a), 6);
+        thread = Ui.add(col, Ui.column(a), 12);
         for (ApolloBrain.Msg m : HISTORY) thread.addView(bubble(m));
 
         Ui.add(col, Ui.label(a, "Try asking"), 20);
@@ -123,8 +117,7 @@ final class ChatPage {
         gl.leftMargin = Ui.dp(a, 10);
         bar.addView(go, gl);
 
-        Ui.add(col, Ui.text(a, "Apollo helps you reflect on your data; it does not diagnose. In an emergency, call 911.",
-                12.5f, Ui.MUTED, false), 12);
+        Ui.add(col, Ui.text(a, "Apollo doesn't diagnose. In an emergency, call 911.", 12.5f, Ui.MUTED, false), 12);
         if (HISTORY.size() > 1) toBottom(60);
     }
 

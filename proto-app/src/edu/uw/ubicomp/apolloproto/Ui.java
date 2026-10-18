@@ -119,7 +119,9 @@ final class Ui {
 
     /** A large reading: "72", "+0.42". */
     static TextView number(Context c, String s, float sp) {
-        return styled(c, s, sp, TEXT, 600);
+        TextView t = styled(c, s, sp, TEXT, 600);
+        t.setIncludeFontPadding(true);   // without it, the tops of big digits ("36.8") are clipped
+        return t;
     }
 
     /** Small spaced capitals: "SATURDAY, OCTOBER 17". */
@@ -210,7 +212,7 @@ final class Ui {
 
         @Override
         protected void onDraw(Canvas c) {
-            float w = getWidth(), h = getHeight();
+            float w = getWidth(), h = Math.min(getHeight(), dp(getContext(), 260));   // a short glow, whatever height a screen gives it
             glow.setShader(new android.graphics.LinearGradient(0, 0, w * 0.9f, h * 0.75f,
                     new int[]{0xFFF27A64, 0xFFF8A98C, 0xFFFBD9A4}, new float[]{0f, 0.45f, 1f}, android.graphics.Shader.TileMode.CLAMP));
             c.drawRect(0, 0, w, h, glow);

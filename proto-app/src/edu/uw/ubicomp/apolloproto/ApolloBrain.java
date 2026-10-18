@@ -54,7 +54,7 @@ final class ApolloBrain {
         String q = " " + raw.toLowerCase(Locale.US).replace('’', '\'').replaceAll("[^a-z0-9' ]", " ") + " ";
 
         // 1. Emergencies, before anything else.
-        if (has(q, "suicid", "kill myself", "end my life", "hurt myself", "self harm", "want to die")) {
+        if (has(q, "suicide", "kill myself", "end my life", "hurt myself", "self harm", "want to die")) {
             return new Msg(false, "I'm really glad you told me. You deserve support right now. Please call or text "
                     + "**988** (Suicide & Crisis Lifeline) to talk to someone tonight. If you're in immediate danger, call **911**.", null)
                     .act("Call 988", "dial:988").act("Call 911", "dial:911");

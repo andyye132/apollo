@@ -149,7 +149,7 @@ final class Ui {
         content.setPadding(dp(c, 20), top + dp(c, 12), dp(c, 20), dp(c, 36));
         content.setClipToPadding(false);
         android.widget.FrameLayout stack = new android.widget.FrameLayout(c);
-        stack.addView(new Sunset(c), new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(c, 380)));
+        stack.addView(new Sunset(c), new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(c, 304)));
         stack.addView(content);
         s.addView(stack);
         fadeStatusBar(c, s);

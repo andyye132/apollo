@@ -347,7 +347,7 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
     /** A scrolling page with the sunset glow at the top; the floating bar leaves room at the bottom. */
     private ScrollView scroll(LinearLayout col) {
         FrameLayout stack = new FrameLayout(this);
-        stack.addView(new Ui.Sunset(this), new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 400)));
+        stack.addView(new Ui.Sunset(this), new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 320)));
         stack.addView(col);
         ScrollView s = new ScrollView(this);
         s.setFillViewport(true);
@@ -390,7 +390,6 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
         gl.leftMargin = Ui.dp(this, 10);
         gl.gravity = Gravity.BOTTOM;
         head.addView(gear, gl);
-        Ui.add(col, Ui.text(this, greeting() + " Here's your day.", 15, Ui.MUTED, false), 6);
 
         // ---- Tests you take: the check-in runs all four in a row; the tiles start one on its own.
         sectionHead(col, "Tests you take", "Quick checks you start yourself. A minute or two each.", 26);
@@ -423,7 +422,7 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
         ((LinearLayout.LayoutParams) arrow.getLayoutParams()).leftMargin = Ui.dp(this, 6);
         go.addView(arrow);
         checkRow.addView(checkText, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        View face = Ui.mascot(this, "hello", 84);   // straight on the card's white
+        View face = Ui.mascot(this, "wink", 84);   // straight on the card's white
         ((LinearLayout.LayoutParams) face.getLayoutParams()).leftMargin = Ui.dp(this, 10);
         checkRow.addView(face);
         Ui.tappable(check, v -> {
@@ -441,29 +440,29 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
         List<JSONObject> fh = new ArrayList<>();
         for (JSONObject o : Store.history(this, "forehead")) if (o.optDouble("core_c_est", -1) > 0) fh.add(o);
         LinearLayout temp = testTile(tests, "thermo", "Temperature", 0, v -> startActivity(new Intent(this, FeverActivity.class)));
-        if (fh.isEmpty()) Ui.add(temp, Ui.styled(this, "Not yet", 24, Ui.TEXT, 600), 6);
-        else Ui.add(temp, reading(String.format(Locale.US, "%.1f", fh.get(0).optDouble("core_c_est")), "°C", 32), 6);
-        tempStatus = Ui.wrap(temp, Ui.chip(this, "Checking", Ui.FAINT), 10);
+        if (fh.isEmpty()) Ui.add(temp, Ui.styled(this, "Not yet", 22, Ui.TEXT, 600), 2);
+        else Ui.add(temp, reading(String.format(Locale.US, "%.1f", fh.get(0).optDouble("core_c_est")), "°C", 28), 2);
+        tempStatus = Ui.wrap(temp, Ui.chip(this, "Checking", Ui.FAINT), 4);
         tempStatus.setBackground(null);
         tempStatus.setPadding(0, 0, 0, 0);
 
         List<JSONObject> hr = readable(Store.history(this, "heart_rate"));
         LinearLayout heart = testTile(tests, "heart", "Heart rate", 12, v -> startActivity(new Intent(this, HeartRateActivity.class)));
         if (hr.isEmpty()) {
-            Ui.add(heart, Ui.styled(this, "Not yet", 24, Ui.TEXT, 600), 6);
-            Ui.add(heart, Ui.text(this, "20-second check", 13, Ui.MUTED, false), 10);
+            Ui.add(heart, Ui.styled(this, "Not yet", 22, Ui.TEXT, 600), 2);
+            Ui.add(heart, Ui.text(this, "20-second check", 13, Ui.MUTED, false), 4);
         } else {
             JSONObject last = hr.get(0);
-            Ui.add(heart, reading(String.format(Locale.US, "%.0f", last.optDouble("bpm")), "bpm", 32), 6);
+            Ui.add(heart, reading(String.format(Locale.US, "%.0f", last.optDouble("bpm")), "bpm", 28), 2);
             if (hr.size() >= 2) {
                 SparkView spark = new SparkView(this);
                 double[] vals = new double[Math.min(10, hr.size())];
                 for (int i = 0; i < vals.length; i++) vals[i] = hr.get(vals.length - 1 - i).optDouble("bpm");
                 spark.setValues(vals);
-                Ui.add(heart, spark, 6).getLayoutParams().height = Ui.dp(this, 30);
+                Ui.add(heart, spark, 3).getLayoutParams().height = Ui.dp(this, 20);
             }
             Ui.add(heart, Ui.text(this, ("GOOD".equals(last.optString("verdict")) ? "Good signal · " : "Weak signal · ")
-                    + clock(last.optLong("id")), 13, Ui.MUTED, false), 6);
+                    + clock(last.optLong("id")), 13, Ui.MUTED, false), 3);
         }
 
         LinearLayout tests2 = Ui.add(col, Ui.row(this), 12);
@@ -601,12 +600,13 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
     /** A test tile (half width): icon, name, then the latest result is added by the caller. */
     private LinearLayout testTile(LinearLayout row, String icon, String name, int leftDp, View.OnClickListener go) {
         LinearLayout t = Ui.card(this);
+        t.setPadding(Ui.dp(this, 16), Ui.dp(this, 9), Ui.dp(this, 16), Ui.dp(this, 9));   // a little shorter than a full card
         Ui.tappable(t, go);
         LinearLayout top = Ui.add(t, Ui.row(this), 0);
-        top.addView(Ui.iconBadge(this, icon, Ui.CORAL, 36));
+        top.addView(Ui.iconBadge(this, icon, Ui.CORAL, 32));
         top.addView(Ui.space(this));
         top.addView(Ui.chevron(this));
-        Ui.add(t, Ui.styled(this, name, 15, Ui.TEXT, 600), 12);
+        Ui.add(t, Ui.styled(this, name, 15, Ui.TEXT, 600), 6);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1);
         lp.leftMargin = Ui.dp(this, leftDp);
         row.addView(t, lp);
@@ -865,11 +865,6 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
         u.setPadding(Ui.dp(this, 5), 0, 0, Ui.dp(this, sp > 40 ? 10 : 5));
         r.addView(u);
         return r;
-    }
-
-    private static String greeting() {
-        int h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
-        return h < 5 ? "Hello, night owl." : h < 12 ? "Good morning." : h < 18 ? "Good afternoon." : "Good evening.";
     }
 
     /** A setup/extra tile. */

@@ -32,3 +32,8 @@ app/src/main/assets/face_landmarker.task
 # Android Studio per-user project files
 .idea/
 *.iml
+
+# BaroTest build output, local signing key and recordings (health data: keep out of git)
+tools/barotest/build/
+tools/barotest/debug.keystore
+tools/barotest/out/

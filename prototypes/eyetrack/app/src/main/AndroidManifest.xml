@@ -3,6 +3,10 @@
 
     <uses-feature android:name="android.hardware.camera.front" android:required="true" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Required for camera foreground services from API 34; harmless on 33 (Pixel 4) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="false"
@@ -17,5 +21,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <service
+            android:name=".EyeTrackingService"
+            android:exported="false"
+            android:foregroundServiceType="camera" />
     </application>
 </manifest>

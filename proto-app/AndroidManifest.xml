@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="edu.uw.ubicomp.apolloproto"
+    android:versionCode="1"
+    android:versionName="0.1">
+
+    <uses-sdk android:minSdkVersion="30" android:targetSdkVersion="33" />
+
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Development permission for the thermistors, granted once over adb (build.sh does it on install). -->
+    <uses-permission android:name="android.permission.DUMP" />
+    <!-- Bluetooth LE to the WILD watch. No pairing; Android 12+ uses the scan/connect permissions. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Calm sensing (RageSense): inaudible sonar through the speaker and microphone. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
+    <!-- Spoken cues: apps targeting Android 11+ must declare the TTS engines they bind to. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
+    <application
+        android:label="Apollo"
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".HeartRateActivity" android:screenOrientation="portrait" />
+        <activity android:name=".FeverActivity" android:screenOrientation="portrait" />
+        <activity android:name=".WatchActivity" android:screenOrientation="portrait" />
+        <activity android:name=".TouchLabActivity" android:screenOrientation="portrait" />
+        <activity android:name=".CalmSenseActivity" android:screenOrientation="portrait" />
+        <activity android:name=".CalibrateActivity" android:screenOrientation="portrait" />
+    </application>
+</manifest>

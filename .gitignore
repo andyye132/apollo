@@ -4,3 +4,9 @@ __pycache__/
 # FeverProbe build output and local signing key (build.sh regenerates the key)
 probe-app/build/
 probe-app/debug.keystore
+ppg-probe/build/
+ppg-probe/debug.keystore
+proto-app/build/
+proto-app/debug.keystore
+# Downloaded datasets (tools/skin_to_core.py fetches them)
+data/external/

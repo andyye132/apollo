@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Apollo: a sun (temperature) crossed by a pulse line (heart rate). 108 dp adaptive-icon canvas; art in the 66 dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#33F2A33A"
+        android:pathData="M30,52a24,24 0 1,0 48,0a24,24 0 1,0 -48,0" />
+    <path android:fillColor="#F2A33A"
+        android:pathData="M38,52a16,16 0 1,0 32,0a16,16 0 1,0 -32,0" />
+    <path android:strokeColor="#E8EDF2" android:strokeWidth="3.6"
+        android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000"
+        android:pathData="M27,60 L43,60 L48,49 L55,72 L61,55 L65,60 L81,60" />
+</vector>

@@ -530,7 +530,108 @@ On the Pixel 4, with the DUMP permission granted over ADB and no root, our probe
 | Battery temperature (public API) | +0.1 °C, in 0.1 °C steps | Useless here |
 | Touch events (`MotionEvent`) | 36 events in the first 2.6 s, then nothing | Doesn't see a forehead, so CA and CL need another source |
 
-An exponential fit to pa-therm gave a heat-transfer constant k ≈ 0.21 /min, with equilibrium at about 34.6 °C. That is a physics feature the paper never used.
+An exponential fit to pa-therm first gave k ≈ 0.21 /min and an equilibrium near 34.6 °C, but the fit is unstable over 90 s. On the same run, the equilibrium came out 34.5 °C when the fit started 10 s after contact, 46.6 °C from 5 s, and 94 °C from 0 s. So k has to be calibrated, not fitted (next section).
+
+#### k: what it is, how to calibrate it, how to verify it
+
+**What k is.** Newton's law of heating gives dT/dt = k·(T_skin − T). At contact, a thermistor warms at slope = k·(T_skin − T0), where T0 is its temperature just before contact. k (per minute) lumps together:
+
+- contact conductance and contact area (how firmly the screen is pressed)
+- the thermistor's distance from the glass
+- the phone's heat capacity
+
+So k differs per sensor, per phone model and per protocol. The paper never computes it: the random forest learns the same thing from CA and CL.
+
+**Why one curve can't give k.** With τ = 1/k around 4–5 min, 90 s of contact is nearly a straight line. The curvature that would reveal k is about 15% of the rise and is swamped by sensor lag and drift.
+
+**Calibrate instead.** This is now in the prototype: forehead report → "Calibrate", plus `tools/fever_calibrate.py`.
+
+1. Press the screen against something of known temperature. The best is the sous-vide water bag. On a person, use a forehead (skin) IR thermometer reading, not an oral one.
+2. For each sensor, k_i = slope_i / (T_ref − T0_i). Store the median over at least 3 runs, per phone model, power mode and protocol.
+3. Every later run then gives T_skin,i = T0_i + slope_i / k_i. Report the median across sensors; their spread is a quality flag.
+4. The slope skips the first 10 s, because the thermistors lag the glass.
+
+**Where the error comes from.** If k is off by a fraction δ, the estimate is off by about δ·(T_skin − T0). The phone is typically 6 °C below skin, so 10% → 0.6 °C. On synthetic runs (`fever_calibrate.py --self-test`), leave-one-out error is:
+
+| Contact between runs | Leave-one-out error |
+| --- | --- |
+| identical | 0.01 °C (the method itself is exact) |
+| ±3% firmness | 0.13 °C |
+| ±10% firmness | 0.39 °C |
+
+The spread across sensors does not catch this, because firmness changes every sensor's k together. The paper fixes it with contact area from raw capacitance, which stock Android doesn't expose: the Pixel 4 drops the forehead touch about 2.5 s after contact.
+
+**Our fix: a table protocol.** The phone lies screen-up on a table and the forehead rests on it, elbows down:
+
+- Head weight gives the same pressure every run.
+- The hand's heat is out of the picture.
+- The pre-hold drift is the phone untouched.
+
+The app offers both protocols and calibrates each separately.
+
+**Real data says drift control comes first.** On our two Pixel 4 recordings, pre-contact drift was +0.52 and −0.54 °C/min, which is 25–100% of the contact slope. Taken at face value, the k values they imply differ 3×. Neither run would pass the readiness gate (|drift| ≤ 0.1 °C/min).
+
+**Calibrating on skin (prototype: "Calibrate temperature" on the home screen).**
+
+1. With the phone on the table until it reads READY, measure a patch of skin with a thermometer (inner forearm, or the forehead).
+2. Tap Start: 10 s to pick the phone up, then exactly 90 s with the screen pressed on that patch, with spoken cues.
+3. Type the reading.
+
+Design choices:
+
+- **Drift baseline:** the screen records from the moment it opens, and drift is fitted over the 40 s before contact. A 10 s window is too short: on our Pixel 4 recordings, 10 s drift estimates scatter by 0.2–0.5 °C/min, as large as the signal.
+- **Fixed 90 s contact:** a linear slope over a longer contact is lower, so k only holds for the window length it was calibrated on.
+- **Built-in check:** each new run is first predicted from the k saved so far, an honest out-of-sample test, and only then added.
+- **Storage:** k is stored per power mode and site (arm, or each forehead protocol). Forehead tests fall back to the arm's k with an "offset possible" warning.
+- **Offline analysis:** `tools/fever_calibrate.py data/apollo/results.jsonl` gives leave-one-out errors per site.
+
+Use the thermometer's surface/object mode: the normal mode of a forehead IR thermometer shows an estimated body temperature (~37 °C), not skin (~33–35 °C).
+
+#### Skin to core
+
+The phone measures skin temperature. A fever reading needs core temperature, and the mapping is weak at the forehead.
+
+**Dataset:** the FDA "Facial and oral temperature data from a large set of human subject volunteers" (Wang et al., PhysioNet 2023, CC0, https://physionet.org/content/face-oral-temp-data/). It has:
+
+- 1,020 subjects (111 with oral temperature at or above 37.5 °C)
+- IR-camera temperatures of 26 facial regions, including forehead centre `T_FHCC`
+- oral temperature in two modes
+- room temperature and humidity
+
+Our 5-fold cross-validated fits on it (oral monitor mode):
+
+| Predictor | MAE | Fever AUC |
+| --- | --- | --- |
+| Always the median | 0.323 °C | – |
+| Forehead centre | 0.315 °C | 0.83 |
+| Forehead + room temperature | 0.312 °C | 0.83 |
+| Inner eye corner + room temperature | 0.241 °C | 0.97 |
+
+Forehead skin correlates only 0.51 with oral temperature (the inner eye corner: 0.78). Caveats:
+
+- These are non-contact IR-camera readings, so contact skin temperature may behave differently.
+- FeverPhone's 0.229 °C came from a population with 16 of 37 febrile, against a 0.452 °C median baseline.
+
+No open dataset with contact skin plus core temperature (zero-heat-flux or GI pill) turned up.
+
+**Model in the prototype (`SkinToCore.java`, fitted by `tools/skin_to_core.py`):**
+
+- oral = 23.495 + 0.4214·skin − 0.0430·room, with room defaulting to the dataset median of 24 °C. A room reading 2 °C off moves the estimate by only 0.09 °C.
+- **Accuracy:** mean error 0.31 °C (cross-validated; always guessing the median gives 0.32), fever AUC 0.83.
+- **Fever flag:** estimates bunch toward 37 like any regression's. A flag at an estimate of 37.24 °C catches 70% of fevers with 10% false alarms; the plain 37.5 cutoff catches 33%.
+- **Shrinks skin errors:** the 0.42 slope turns a 0.3 °C skin error into a 0.13 °C core error.
+- **Rejected:** a heat-balance form (core = skin + K·(skin − room)) fitted K ≈ 0 and did worse (0.45 °C), and adding `T_offset` made every model worse.
+
+Replace this model with one fitted on paired phone + oral data once we have it.
+
+**Verification protocol.** Keep each step's raw files and list them in a `runs.csv` (`raw_file,ref_c,kind`) for `fever_calibrate.py`.
+
+1. **Bench sweep:** water bag at 34, 35, 36, 37, 38 °C, 3 runs each, phone settled (READY) every time. Pass: leave-one-out MAE under 0.3 °C, and the error doesn't trend with temperature.
+2. **Repeatability:** 5 runs at one temperature. Pass: k varies by less than 10% (CV) per sensor.
+3. **Sensitivity:** the estimate rises monotonically from 34 to 38 °C, with slope 1 ± 0.15.
+4. **Negative control:** hold the phone in the air for 90 s (`kind=nocontact`). The rate should be about 0, and the "temperature" should equal the phone's own.
+5. **Protocol A/B:** repeat steps 1–2 for hand-held and table, and keep the one with the lower k CV.
+6. **People:** a forehead IR reading right before each run is the skin reference. An oral reading after it feeds a later skin→core model, which FeverPhone built from 37 people. Compare against the IR reading; don't claim core temperature until that model exists.
 
 #### Android implementation
 
@@ -546,7 +647,7 @@ An exponential fit to pa-therm gave a heat-transfer constant k ≈ 0.21 /min, wi
    - Read every thermistor at 1 Hz with `ThermistorReader` (see Android build).
    - Log touch events anyway.
    - Speak or vibrate the start and end cues.
-4. **Features per thermistor:** contact slope minus pre-contact drift, IT, and the exponential-fit k and equilibrium where the curve allows.
+4. **Features per thermistor:** contact slope (from contact + 10 s) minus pre-contact drift, IT just before contact, and the calibrated k and skin estimate T0 + slope/k (see "k" above).
 5. **Contact area and location without raw touch,** in order of effort:
    - (a) An on-screen placement guide, so location is fixed by protocol.
    - (b) The pattern of response across thermistors as a location proxy.
@@ -564,7 +665,8 @@ An exponential fit to pa-therm gave a heat-transfer constant k ≈ 0.21 /min, wi
 - [ ] Run `tools/forehead_test_app.sh` three more times in each power mode (unplugged after settling, and plugged in at 100%), with an oral thermometer reading each time
 - [ ] Run the same test on the Pixel 7
 - [ ] Email the authors for code, data and their thermistor choice
-- [ ] Build the water-bag rig (sous-vide stick, sealed bag, cardboard box with a forehead-sized hole)
+- [ ] Build the water-bag rig (sous-vide stick, sealed bag, cardboard box with a forehead-sized hole), then run the verification protocol above
+- [ ] A/B the hand-held and table protocols on k repeatability
 - [ ] Port `ProbeActivity`'s reader into `sensing/thermal/ThermistorReader.kt` with a replay source over `data/forehead_app_*.csv`
 
 #### Watch out for
@@ -699,6 +801,27 @@ The sensing uses a ResNet-18, then a sparse transformer, then an LSTM on echo sp
   - Failure modes: bad timing (17/24), context mismatch (14/24), patronising tone (10/24).
   - Expert players hated being treated as novices.
 - **Field study:** personalised LLM messages scored 4.5/5 for experience, against 3.1 for canned messages at the same moments and 2.9 for random timing.
+
+#### On a stock phone (prototype: Calm sensing)
+
+`CalmSenseActivity` in `proto-app/` runs the sensing and trigger halves on the Pixel 4. It is untested on the device so far.
+
+- **Sonar (`Sonar.java`):**
+  - AudioTrack loops an 18–22 kHz chirp: 512 samples (10.7 ms) at 48 kHz, with raised-cosine edges.
+  - AudioRecord reads the `VOICE_RECOGNITION` source. CDD 7.8.3 requires near-ultrasound response there when the phone reports it, and the Pixel 4 reports mic and speaker support.
+  - A circular, analytic cross-correlation gives the echo profile. The direct path is found automatically.
+  - Consecutive profiles are differenced (the paper's step) over 3.6–61 cm. A 1 mm moving echo gives 14× the energy of a still one in the known-answer test.
+- **IMU gating:** sensing pauses when short-time motion energy is above mean + 0.25·SD, the paper's threshold.
+- **Trigger (`JitaTrigger.java`):** follows the paper:
+  - EMA, a 60 s dynamic threshold with k decaying 1.2→0.8, and CUSUM
+  - plus a cooldown and a 30 s warm-up
+  - Tested: silent on a steady baseline; fires once, within a second, on a sustained rise.
+- **Substitutions:** the emotion network (25M parameters, 20 players) isn't public. So the trigger runs on a movement index (log echo-change energy), and messages come from a fixed library of short lines (the paper's fallback), not an LLM. This is agitation sensing, not emotion recognition.
+- **To verify on the phone:**
+  - The heat map shows a bright band at face distance when you nod.
+  - The index rises when you fidget and settles when you're still.
+  - Taps are gated out.
+  - Check the speaker is inaudible to younger listeners: 18 kHz is audible to some.
 
 #### Android implementation (for our agent)
 
@@ -945,7 +1068,20 @@ The raw capacitance frame becomes a smoothed "gravel" density field that balls b
 
 #### Android implementation
 
-Don't build it. The relevance is that it hits the same wall as FeverPhone's contact features: public touch APIs give only finger ellipses. Raw capacitance images need vendor firmware, or on Pixels root or a debug kernel. If we root a Pixel 6 for FeverPhone, the same raw frames would serve both.
+It hits the same wall as FeverPhone's contact features: public touch APIs give only finger ellipses. Raw capacitance images need vendor firmware, or on Pixels root or a debug kernel. If we root a Pixel 6 for FeverPhone, the same raw frames would serve both.
+
+**Stock-phone approximation (prototype: Ball rescue).** `TouchLabActivity` / `TouchWorld.java` rebuild the paper's field from the touch ellipses:
+
+- Each pointer's major/minor axis, orientation and pressure is painted into a 52 × 78 grid.
+- The grid is Gaussian-smoothed (3 box blurs) and dilated, as in the paper.
+- Physics follows the paper: gravity, linear drag, repulsion along the field gradient, and restitution that rises with density. Tested: a firm touch rebounds a ball 125 px against 77 px for a light one.
+- The game has a basket, stars, and a finite lifespan for balls in free fall.
+
+Limits of the approximation:
+
+- Touches are ellipses, not hand shapes.
+- The Pixel 4 under-reports contact size, so touches are painted at least 8 mm wide.
+- Palm rejection may cancel flat-hand contact.
 
 ## Android build
 

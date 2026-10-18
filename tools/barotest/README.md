@@ -1,6 +1,6 @@
 # BaroTest: blow strength from the barometer
 
-A forced blow at the screen from 2–3 cm flexes the glass of a sealed (IP68) phone and briefly raises the pressure inside it. The phone's barometer sees that as a pulse. **The pulse is repeatable for one person but doesn't give peak flow in L/min across people**, so the feature built on it is **blow strength against your own baseline**.
+A forced blow at the screen from **fist height** (make a fist on the table and bring your mouth to the top of your thumb, roughly 8–10 cm) flexes the glass of a sealed (IP68) phone and briefly raises the pressure inside it. The phone's barometer sees that as a pulse. **The pulse is repeatable for one person but doesn't give peak flow in L/min across people**, so the feature built on it is **blow strength against your own baseline**.
 
 | | |
 | --- | --- |
@@ -17,10 +17,12 @@ A forced blow at the screen from 2–3 cm flexes the glass of a sealed (IP68) ph
 | Test | Result |
 | --- | --- |
 | Hard finger press on the screen | **+1,232 Pa** for as long as the press lasts. Touching or holding the phone swamps everything, so it must lie flat and untouched |
-| Blows from ~10 cm, phone flat | 7–12 Pa, one at 22 Pa. Soft, medium and maximal overlapped. **Too far** |
-| Blows from 2–3 cm at the screen centre (one person) | Soft ~11 Pa, medium ~16 Pa, **maximal ~55 Pa**: a clear dose response, 25–40× the noise |
+| Session 1: soft/medium/maximal blows, phone flat, fist height (one person) | 7–12 Pa, one at 22 Pa. Soft, medium and maximal overlapped |
+| Session 2: same person, same distance, aimed at the screen centre | Soft ~11 Pa, medium ~16 Pa, **maximal ~55 Pa**: a clear dose response, 25–40× the noise |
 | Each blow | Followed by a −17 to −24 Pa rebound (the glass springing back). Ignore it; use the positive peak |
-| Calibration, 4 people × 4 maximal blows, finger-width spacer | See below |
+| Calibration, 4 people × 4 maximal blows, fist height | See below |
+
+**Distance was the same (fist height) in every session.** The difference between session 1 and session 2 came from something else, most likely technique (aiming at the centre of the screen, a sharper blast, practice). An earlier version of this README credited it to blowing closer, which was wrong. **Technique matters a lot,** which is why the app coaches it and compares only against your own results.
 
 **Calibration against a peak-flow meter** (meter value = mean of each person's top 3 of 8 meter blows):
 
@@ -44,7 +46,7 @@ A forced blow at the screen from 2–3 cm flexes the glass of a sealed (IP68) ph
 **Protocol the UI coaches:**
 
 1. Phone **flat on a table, screen up**, no case pressing on the screen, **hands off**.
-2. **Spacer:** one finger laid flat on the screen; put your lips just above it, then lift the finger before blowing. That gives 2–3 cm. The app shows a target circle at the screen centre.
+2. **Distance: fist height.** Make a fist on the table next to the phone and bring your mouth to the height of your thumb (roughly 8–10 cm). It's the distance every measurement here used, and it scales with the person. Aim at the centre of the screen.
 3. **Round "O" mouth, about the size of a finger.** Keep it the same every time, since opening area is the biggest confound.
 4. Full breath in, then a maximal blast. **3–5 blows, 8–10 s apart**, with a countdown and a "blow now" cue. The app shows each blow's result as it lands.
 

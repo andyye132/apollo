@@ -12,6 +12,7 @@ import java.util.Random;
  *  - JitaTrigger: quiet on a steady baseline, fires once on a sustained rise, respects the cooldown.
  *  - TouchWorld: a ball dropped on a touch bounces back up; a firmer touch bounces it higher.
  *  - FeverAnalysis: calibrating k at one known temperature recovers other temperatures from Newton curves.
+ *  - BlowDetector: finds blows on a drifting baseline, ignores a touch, and grades consistency.
  */
 public class CoreCheck {
     static int failures;
@@ -30,6 +31,7 @@ public class CoreCheck {
         exposure();
         jolt();
         steadiness();
+        breath();
         System.out.println(failures == 0 ? "all core checks passed" : failures + " core check(s) FAILED");
         if (failures > 0) System.exit(1);
     }
@@ -228,6 +230,49 @@ public class CoreCheck {
     }
 
     /** The latest hand-held run's shape: still on the table, handled ~35 s before Start (tapping through the app). */
+    /** Synthetic barometer at 25 Hz: 1.6 Pa noise, slow drift, four blows, and optionally a finger press. */
+    static double[][] baro(double[] blowPa, boolean press) {
+        Random rng = new Random(7);
+        int n = 36 * 25;
+        double[] t = new double[n], hpa = new double[n];
+        for (int i = 0; i < n; i++) {
+            t[i] = i / 25.0;
+            double pa = 101_300 + 0.1 * t[i] + 1.6 * rng.nextGaussian();   // drift 6 Pa/min
+            for (int b = 0; b < blowPa.length; b++) {
+                double dt = t[i] - (3 + 9 * b);
+                if (dt >= 0 && dt < 0.4) pa += blowPa[b] * Math.sin(Math.PI * dt / 0.4);       // 0.4 s pulse
+                if (dt >= 0.4 && dt < 0.8) pa -= 0.25 * blowPa[b] * Math.sin(Math.PI * (dt - 0.4) / 0.4);   // rebound dip
+            }
+            if (press && t[i] >= 25 && t[i] < 28) pa += 1200;
+            hpa[i] = pa / 100;
+        }
+        return new double[][]{t, hpa};
+    }
+
+    static void breath() {
+        System.out.println("BlowDetector (breath strength from the barometer)");
+        double[][] d = baro(new double[]{80, 85, 90, 82}, false);
+        BlowDetector.Summary s = BlowDetector.analyze(d[0], d[1]);
+        check(s.blows().size() == 4, "finds all four blows (got " + s.blows().size() + ")");
+        check(Math.abs(s.strengthPa - 85.7) < 5, String.format(Locale.US, "strength = top-3 mean ~85.7 Pa (got %.1f)", s.strengthPa));
+        check(s.quality == BlowDetector.Quality.GOOD, "consistent blows grade GOOD (got " + s.quality + ")");
+
+        d = baro(new double[]{80, 85, 90}, true);
+        s = BlowDetector.analyze(d[0], d[1]);
+        check(s.touches() == 1 && s.blows().size() == 3, "a 3 s, 1,200 Pa press is a touch, not a blow");
+
+        d = baro(new double[]{20, 60, 90, 30}, false);
+        s = BlowDetector.analyze(d[0], d[1]);
+        check(s.quality == BlowDetector.Quality.INCONSISTENT, "widely varying blows grade INCONSISTENT (got " + s.quality + ")");
+
+        d = baro(new double[]{80, 85}, false);
+        check(BlowDetector.analyze(d[0], d[1]).quality == BlowDetector.Quality.TOO_FEW, "two blows is too few");
+
+        check(Double.isNaN(BlowDetector.baseline(java.util.Arrays.asList(80.0, 90.0))), "no baseline before three results");
+        check(BlowDetector.baseline(java.util.Arrays.asList(10.0, 80.0, 90.0, 85.0, 70.0, 95.0)) == 85.0,
+                "baseline = median of the last five results");
+    }
+
     static void steadiness() {
         System.out.println("Steadiness (readiness and the drift baseline)");
         int n = 121;

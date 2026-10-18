@@ -475,6 +475,7 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
         int runs = Store.history(this, "calibration").size();
         extraTile(col, "plus", Ui.CORAL, "Calibrate temperature", runs == 0 ? "Teach Apollo how your forehead warms the phone"
                 : runs + " run" + (runs == 1 ? "" : "s") + " saved · forehead runs and controls", CalibrateActivity.class);
+        extraTile(col, "waves", Ui.CORAL, "Breath strength", BreathActivity.tileLine(this), BreathActivity.class);
         extraTile(col, "waves", Ui.LEAF, "Calm sensing", "Inaudible sonar notices agitation and suggests a breath · RageSense",
                 CalmSenseActivity.class);
         extraTile(col, "play", Ui.LEAF, "Ball rescue", "Your hands on the screen become sand · Magical Touch", TouchLabActivity.class);

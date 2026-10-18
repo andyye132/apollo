@@ -5,12 +5,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 out=$(mktemp -d)
-javac -d "$out" proto-app/src/edu/uw/ubicomp/apolloproto/{Dsp,PpgAnalysis,FeverAnalysis,WatchDecoder,Sonar,JitaTrigger,TouchWorld,SkinToCore,ExposureControl,WatchAnalysis,JoltDetector,Steadiness}.java \
-  proto-app/test/edu/uw/ubicomp/apolloproto/{Check,WatchCheck,CoreCheck}.java
+javac -d "$out" proto-app/src/edu/uw/ubicomp/apolloproto/{Dsp,PpgAnalysis,FeverAnalysis,WatchDecoder,Sonar,JitaTrigger,TouchWorld,SkinToCore,ExposureControl,WatchAnalysis,JoltDetector,Steadiness,BlowDetector}.java \
+  proto-app/test/edu/uw/ubicomp/apolloproto/{Check,WatchCheck,CoreCheck,BreathCheck}.java
 for f in "$@"; do
   case "$f" in
     core) java -cp "$out" edu.uw.ubicomp.apolloproto.CoreCheck ;;   # known-answer tests for the cores
     *ble_raw*) java -cp "$out" edu.uw.ubicomp.apolloproto.WatchCheck "$f" ;;   # captured watch Bluetooth packets
+    *breath_*|*cal_P*|*baro*) java -cp "$out" edu.uw.ubicomp.apolloproto.BreathCheck "$f" ;;   # barometer t_ns,hpa
     *) java -cp "$out" edu.uw.ubicomp.apolloproto.Check "$f" ;;
   esac
 done

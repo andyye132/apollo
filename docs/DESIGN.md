@@ -12,8 +12,8 @@ Apollo is an Android app that takes health measurements with the phone's own sen
 
 - **Must work:** FeverPhone core temperature and fingertip heart rate.
 - **Comes along cheaply:** steps, floors climbed, stair steps.
-- **Stretch:** lung function from audio, background eye tracking.
-- **Constraint:** all data stays on the phone. The one exception is the agent call, which sends only what the agent's tools return.
+- **Stretch:** lung function from audio. Vision: an eye-tracking prototype (blink rate, gaze shifts) works in the foreground on the Pixel 7, and a passive version is specified (see Vision: eye tracking, below). Facial heart rate remains deferred.
+- **Constraint: offline first, local only.** Every measurement, the history, trends and journal work with no network. Heart rate, temperature, steps and floors are stored only in the on-device database. There is no cloud database, account or sync. The one network call is the chatbot, which sends only what its tools return (see Data provenance and privacy, below).
 
 ### v1 scope
 
@@ -29,14 +29,14 @@ Apollo is an Android app that takes health measurements with the phone's own sen
 | HRV | Accelerometer on the belly, 30 s | EHB 2017 | v2 |
 | Absolute elevation | Barometer plus a reference pressure | Liu 2014 | v2 |
 | Lung function | Microphone during exhale or sustained "Aaah" | SpiroSmart, Saleheen | Stretch |
-| Eye tracking | Front camera in a foreground service, face landmarks | None | Stretch |
+| Eye tracking | Front camera, MediaPipe face landmarks: blink rate and gaze-shift rate; passive via a camera foreground service | None | Stretch: foreground prototype works (Pixel 7), passive version specified |
 
 ### Phones
 
 | Phone | Status | Use it for |
 | --- | --- | --- |
 | Pixel 4 (Android 13) | Have it. The no-root thermistor route is verified: 19 sensors at about 0.002 °C resolution | Main dev phone now |
-| Pixel 7 | Have it, not yet probed | Run `tools/probe_phone.sh` and the forehead test next |
+| Pixel 7 (Android 15) | Have it. Mic measured linear on `VOICE_RECOGNITION`; front camera max 30 fps | Lung tests, heart rate, motion. Still run `tools/probe_phone.sh` and the forehead test |
 | Pixel 6 | Don't have one. It's the phone FeverPhone was validated on | Buy 1–2 if FeverPhone accuracy matters more than demo speed |
 | Any teammate's Android | Varies | UI, journal, agent, steps, heart rate |
 
@@ -56,13 +56,24 @@ Set `minSdk = 33` so the Pixel 4 works, and `targetSdk = compileSdk = 36`. Every
 | Camera | CameraX with Camera2 interop | Torch, frame-rate range, AE/AWB lock |
 | Motion | `SensorManager` | Step counter, step detector, pressure, accelerometer |
 | Thermistors | `Debug.dumpService("thermalservice")` with DUMP granted over ADB | Verified on the Pixel 4 with no root |
-| Audio (stretch) | `AudioRecord` with `UNPROCESSED` source | Avoids AGC and noise suppression |
+| Audio (stretch) | `AudioRecord` with the `VOICE_RECOGNITION` source at 48 kHz, effects forced off | Neither Pixel supports `UNPROCESSED`; `VOICE_RECOGNITION` measured linear on both (`tools/mictest/`) |
 | On-device ML | Plain Kotlin for linear models and exported random forests; LiteRT if a neural net arrives; MediaPipe Tasks for face landmarks | Small, inspectable models first |
 | Charts | Vico (Compose) | Native Compose charts |
 | Health platform | Health Connect, optional write-only | Interop with other apps, but other apps can read it, so it's opt-in |
 | LLM | Claude Opus 5.5 (`claude-opus-5-5`) through a stateless proxy that holds the key | Best feedback quality; the key never ships in the APK |
 | Networking | OkHttp + kotlinx.serialization | Small and well known |
 | Analysis | Python (pandas, scikit-learn) in `analysis/` | Fit models on recorded CSVs, export parameters as JSON for the app |
+
+**Decided: native Kotlin + Jetpack Compose** (re-checked 2026-10-17). Almost all of the app's hard parts are sensor code that only exists as native Android API:
+
+- `Debug.dumpService` for the thermistors
+- Camera2 interop for the torch and the AE/AWB lock
+- `SensorManager` for the barometer and step sensors
+- foreground service types
+
+Flutter or React Native would need a hand-written native bridge for each of those, which is most of the app, and a second language on top. Compose also gives the stateless-screen-plus-preview workflow that lets UI work happen without a phone (see Prototype UI without a device, in Dev setup).
+
+Hilt stays: each module declares its own `@Module`, so there is no central DI file for everyone to edit.
 
 ### Architecture
 
@@ -90,31 +101,57 @@ Three rules hold this together:
 1. **Every sensor sits behind a `SensorSource` interface with a live and a replay implementation.** Replay reads CSVs recorded on real phones, like the ones in `data/`. That lets us build UI on the emulator, write unit tests and show previews without a Pixel in hand.
 2. **Every measurement produces a `Reading` with a quality score.** Below the threshold, the UI says "retake" instead of showing a number, and the agent never sees it as a valid value.
 3. **The agent's tools execute on the phone.** The proxy only relays requests. Only the tool results the agent asks for leave the device.
+4. **Features never import each other.** Each feature module depends only on `:core`. A feature that needs something from another feature gets it through an interface in `:core`. The Gradle module boundaries make the compiler enforce this, so parallel work (and each person's coding agent) can't quietly couple two features.
 
-### Code layout
+### Code layout and ownership
 
-Start with one `app` module organised by package, and split into Gradle modules when build times hurt.
+Use Gradle modules from day one, not one `app` module split by package. Four people working in parallel matters more than build times: a module boundary is a wall the compiler enforces, while a package boundary is only a convention.
 
 ```text
 apollo/
-├── app/src/main/java/edu/uw/ubicomp/apollo/
-│   ├── ui/            screens, navigation, theme, components
-│   ├── data/          Room entities, DAOs, repositories, export
-│   ├── sensing/
-│   │   ├── core/      SensorSource, Measurement, Reading, quality
-│   │   ├── thermal/   ThermistorReader, FeverPhone pipeline
-│   │   ├── ppg/       camera capture, HR pipeline
-│   │   ├── motion/    steps, floors, stairs (barometer)
-│   │   └── replay/    CSV-backed fake sources
-│   ├── agent/         Claude client, tools, red-flag rules, triggers
-│   └── service/       foreground services
-├── backend/           stateless Claude proxy (not part of the APK)
-├── analysis/          Python notebooks and scripts that fit models
-├── data/              recorded sessions (CSV) used for replay and tests
-├── docs/              this doc
-├── probe-app/         existing FeverProbe logger
-└── tools/             existing adb/test scripts
+├── app/                  :app              UI shell, theme, navigation, generic measurement-flow screen, DI wiring
+├── core/                 :core             shared interfaces + models (below), pure-Kotlin signal helpers. No Android UI
+├── storage/              :storage          Room database, DAOs, HealthRepository implementation, export
+├── sensing/thermal/      :sensing:thermal  ThermistorReader, FeverPhone pipeline, PhoneThermalMonitor, replay source
+├── sensing/ppg/          :sensing:ppg      camera capture, heart-rate pipeline, replay source
+├── sensing/motion/       :sensing:motion   steps, floors, PassiveTrackingService, replay source
+├── agent/                :agent            chatbot client, tools, red-flag rules, triggers
+├── backend/              stateless Claude proxy (not part of the APK)
+├── analysis/             Python scripts that fit models
+├── data/                 recorded sessions (CSV), used for replay and tests
+├── docs/                 this doc
+├── probe-app/            existing FeverProbe logger (retire once :sensing:thermal works)
+├── prototypes/eyetrack/  standalone eye-tracking prototype; becomes :sensing:vision
+└── tools/                existing adb/test scripts
 ```
+
+Each module uses the package `edu.uw.ubicomp.apollo.<module>`, for example `edu.uw.ubicomp.apollo.sensing.thermal`.
+
+**Dependencies:**
+
+- `:app` depends on everything.
+- `:storage`, `:agent` and every `:sensing:*` module depend only on `:core`.
+- `:agent` reads data through the `HealthRepository` interface in `:core`, never the Room classes.
+
+| Role | Owns | Phone needed |
+| --- | --- | --- |
+| UI | `:app`, the root Gradle files, `gradle/libs.versions.toml` | None: emulator + replay |
+| Temperature | `:sensing:thermal` | Pixel 4 |
+| Heart rate + motion | `:sensing:ppg`, `:sensing:motion` | Any phone with a torch and a barometer; the Pixel 7 is fine |
+| Data + agent | `:core` (as merge reviewer), `:storage`, `:agent`, `backend/` | None |
+
+The data + agent owner writes `:core` in the first hour, before anyone branches off (see Phase 0 in the Roadmap).
+
+**Files everyone is tempted to touch, and the rule for each:**
+
+| File | Rule |
+| --- | --- |
+| `core/**` | Changes go through a PR that every owner whose module uses the changed type approves. Add, don't rename. |
+| `gradle/libs.versions.toml`, `settings.gradle.kts` | Owned by UI. Others may add a line in their own PR, but say so in the team channel |
+| `AndroidManifest.xml` | Each module declares its own permissions and services in its own manifest, and Gradle merges them. Nobody edits another module's manifest |
+| Room `AppDatabase` | Owned by data + agent, in `:storage`. Features don't add tables: they return a `MeasurementResult`, and raw samples go in files |
+| Navigation graph | Owned by UI. The Measure screen lists every `Measurement` it gets through Hilt (`@IntoSet`), so adding a measurement needs no navigation change |
+| `CLAUDE.md` at the root | States these rules, so every coding agent reads them. Each module gets a short `CLAUDE.md` with its owner and scope |
 
 ### Data model
 
@@ -126,30 +163,202 @@ Room tables. Every row carries the phone model, because calibration is per model
 | `session` | kind, startedAt, endedAt, protocolVersion, rawPath, referenceValue, referenceDevice, notes | Raw data lives in a file; `referenceValue` holds a thermometer or oximeter reading when the user has one |
 | `journal_entry` | createdAt, text, mood (1–5), tags | Free text plus light structure |
 | `feedback` | createdAt, trigger, cardJson, model, promptVersion | Every agent output, for review |
-| `calibration` | deviceModel, metric, paramsJson, nSamples, fittedAt | Model coefficients per phone model |
+| `chat_message` | conversationId, createdAt, role, text, toolCallsJson | Chatbot history, kept on the phone and resent as context on each call |
+| `calibration` | deviceModel, metric, powerMode, paramsJson, nSamples, fittedAt | Model coefficients per phone model and power mode (`unplugged` or `trickle`; see Measurement order and phone heat) |
 
 The `referenceValue` field matters. If we ask "have a thermometer? enter its reading" after each measurement from day one, every use of the app produces calibration data.
 
-### Measurement contract
+### Shared interfaces (`:core`)
 
-Each measurement module implements one interface. Passive collectors (steps, floors) write readings on their own schedule instead.
+Everything in this section lives in `:core`, and these are the only types modules share. Write it first, merge it, then branch. Below is the agreed v1 contract.
+
+- **A guided test** such as FeverPhone or fingertip heart rate implements `Measurement`. The app's generic flow screen runs it and saves its result, so feature modules write no navigation code and no database code.
+- **A passive collector** such as steps or floors writes `Reading`s through `HealthRepository` on its own schedule instead.
 
 ```kotlin
-interface Measurement {
-    val id: String                          // "feverphone", "ppg_finger"
-    val prepChecks: List<PrepCheck>         // charging, airplane mode, finger on lens...
-    fun run(): Flow<MeasurementState>       // Prep -> Countdown -> Capturing(progress, live) -> Done | Failed
+package edu.uw.ubicomp.apollo.core
+
+// ---- Sensors --------------------------------------------------------------------------------
+
+/** A stream of raw samples from one sensor. Every source has a Live and a Replay implementation. */
+interface SensorSource<T> {
+    val id: String                                   // "thermistors", "camera_red", "pressure"
+    suspend fun availability(): Availability
+    fun samples(): Flow<T>                           // cold: collecting starts the sensor, cancelling stops it
 }
 
+sealed interface Availability {
+    data object Ready : Availability
+    data class NeedsPermission(val permissions: List<String>) : Availability
+    data class NeedsSetup(val instructions: String) : Availability       // "adb shell pm grant ... DUMP"
+    data class Unsupported(val reason: String) : Availability            // no barometer, no torch, not a Pixel
+}
+
+// ---- Guided measurements --------------------------------------------------------------------
+
+interface Measurement {
+    val id: String                                   // "feverphone", "ppg_finger"
+    val title: String
+    val estimatedSeconds: Int
+    val heatsPhone: Boolean                          // true for ppg (torch + camera)
+    val heatSensitive: Boolean                       // true for feverphone
+    suspend fun availability(): Availability
+    fun prepChecks(): List<PrepCheck>
+    fun run(): Flow<MeasurementState>                // cancelling the collector aborts the test
+}
+
+data class PrepCheck(val id: String, val label: String, val evaluate: suspend () -> CheckResult)
+
+sealed interface CheckResult {
+    data object Pass : CheckResult
+    data class Warn(val message: String) : CheckResult                   // user may continue
+    data class Block(val message: String, val retryInSeconds: Int? = null) : CheckResult
+}
+
+sealed interface MeasurementState {
+    data class Instruction(val text: String, val secondsLeft: Int?) : MeasurementState    // "Hold the corners", countdown
+    data class Capturing(val progress: Float, val live: LiveSignal?) : MeasurementState
+    data class Done(val result: MeasurementResult) : MeasurementState
+    data class Failed(val reason: String, val retryable: Boolean) : MeasurementState
+}
+
+data class LiveSignal(val label: String, val value: Double?, val unit: String, val trace: FloatArray? = null)
+
 data class MeasurementResult(
-    val readings: List<Reading>,
-    val rawFile: File,                      // every sample, for replay and re-analysis
-    val quality: Float,                     // 0..1
-    val warnings: List<String>,             // "moved during capture", "room too warm"
+    val measurementId: String,
+    val readings: List<Reading>,                     // includes low-quality ones; the UI and agent filter on quality
+    val rawFile: File,                               // every sample, for replay and re-analysis
+    val quality: Float,                              // 0..1
+    val warnings: List<String>,                      // "moved during capture", "phone was still warming"
+    val startedAt: Long,                             // epoch ms, UTC
+    val endedAt: Long,
 )
+
+// ---- Data -----------------------------------------------------------------------------------
+
+data class Reading(
+    val metric: String,                              // one of Metrics.*
+    val value: Double,
+    val unit: String,
+    val quality: Float,
+    val method: String,                              // "feverphone.dump.v1", "ppg.finger.v1"
+    val startedAt: Long,
+    val endedAt: Long,
+    val deviceModel: String,                         // Build.MODEL
+    val id: Long = 0,                                // set by storage
+)
+
+object Metrics {
+    const val CORE_TEMP_C = "core_temp_c"
+    const val HEART_RATE_BPM = "heart_rate_bpm"
+    const val STEPS = "steps"
+    const val FLOORS = "floors"
+}
+
+/** The only way into stored data, for the UI, the agent and passive collectors. Implemented in :storage. */
+interface HealthRepository {
+    suspend fun saveResult(result: MeasurementResult): Long             // returns the session id
+    suspend fun saveReading(reading: Reading)
+    fun readings(metric: String, from: Long, to: Long): Flow<List<Reading>>
+    suspend fun latest(metric: String): Reading?
+    suspend fun baseline(metric: String): Baseline?                     // personal median + spread, last 14 days
+    suspend fun lastRun(measurementId: String): Long?                   // epoch ms of the last finished session
+    suspend fun saveJournal(entry: JournalEntry): Long
+    fun journal(from: Long, to: Long): Flow<List<JournalEntry>>
+}
+
+data class Baseline(val median: Double, val spread: Double, val n: Int)
+data class JournalEntry(val createdAt: Long, val text: String, val mood: Int?, val tags: List<String>, val id: Long = 0)
+
+// ---- Phone heat (see "Measurement order and phone heat") ------------------------------------
+
+/** Published by :sensing:thermal; read by the app and by FeverPhone's prep checks. */
+interface PhoneThermalMonitor {
+    val state: StateFlow<PhoneThermalState>
+}
+
+data class PhoneThermalState(
+    val verdict: ThermalVerdict,
+    val phoneTempC: Double?,                         // reference thermistor (quiet-therm on the Pixel 4)
+    val driftCPerMin: Double?,                       // slope over the last 120 s
+    val minutesSinceHeatingMeasurement: Double?,     // since the last heatsPhone measurement ended
+    val powerMode: PowerMode,
+    val minutesSincePowerChange: Double?,            // since the cable was last plugged in or pulled out
+    val estimatedSecondsUntilReady: Int?,
+)
+
+enum class ThermalVerdict { READY, SETTLING, TOO_WARM, UNSUPPORTED }
+
+/** Read from BatteryManager. Each mode FeverPhone supports has its own calibration. */
+enum class PowerMode { UNPLUGGED, TRICKLE /* plugged in at 100% */, CHARGING /* plugged in below 100%: not supported */ }
 ```
 
+**What other modules provide**, all through Hilt:
+
+- Each `:sensing:*` module binds its measurements with `@Binds @IntoSet Measurement`.
+- `:storage` binds `HealthRepository`.
+- `:sensing:thermal` binds `PhoneThermalMonitor`. On phones without thermistor access it binds a stub that always says `UNSUPPORTED`.
+- Each module also binds its replay sources behind a developer-settings switch.
+
+**Conventions:**
+
+- **Time:** times are epoch milliseconds (UTC) at the edges and sensor nanoseconds inside pipelines.
+- **Units:** units are SI-ish and named in the field (`celsius`, `bpm`, `hPa`).
+
+### Measurement order and phone heat
+
+The heart-rate test runs the torch and camera for about 20 s, which warms the phone. FeverPhone measures how fast the phone warms against the forehead, so a phone that is already warm, or still cooling, gives a bad temperature. Two mechanisms handle this.
+
+**1. Ask before a heating measurement.**
+
+When the user starts a measurement with `heatsPhone = true` (heart rate), the app first checks for any available `heatSensitive` measurement (temperature) that hasn't run in this check-up. If there is one, it asks:
+
+> "Taking your temperature too? Do it first. The camera light warms the phone and would throw off the reading."
+
+The options are **Temperature first** and **Just heart rate**. The rule is generic, driven by the two flags, so there is no FeverPhone-specific code in the heart-rate module.
+
+Where this lives in the UI (a dialog, a combined "check-up" flow, or ordering on the Measure screen) is **to be decided**. The rule and the flags are fixed now.
+
+**2. Track the phone's own temperature continuously.**
+
+`PhoneThermalMonitor` reads the thermistors once a second while the app is in the foreground. It is not a background service. Starting at app launch means there is already a few minutes of history by the time the user opens the temperature test. The monitor also sees the torch heat from a heart-rate test directly, so the heart-rate module doesn't need to report anything.
+
+| Verdict | Rule (starting values, tune on Pixel 4 recordings) | FeverPhone prep check |
+| --- | --- | --- |
+| `READY` | \|drift\| ≤ 0.1 °C/min over the last 120 s, ≥ 10 min since a `heatsPhone` measurement, and phone temp < 32 °C | Pass |
+| `SETTLING` | Drift above the limit, or a heating measurement too recent | Block, with "about N min" from the drift rate or the timer |
+| `TOO_WARM` | Phone temp ≥ 32 °C. Forehead skin is about 34–35 °C, which leaves too little gradient | Block, "let the phone cool" |
+| `UNSUPPORTED` | No DUMP grant, or not a calibrated phone model | FeverPhone hidden or marked unavailable |
+
+Our first forehead run shows why this matters: after unplugging, the Pixel 4 was still cooling at about −0.5 °C/min two to three minutes later.
+
+The monitor's state at the start of each capture is saved with the session, in the raw file header. The FeverPhone quality score also uses it, so a reading taken while settling is marked low quality, not hidden.
+
+**Charging: two supported power modes, each with its own calibration.**
+
+FeverPhone measures how fast the phone warms, so the phone's own heat has to be steady. A change in power state (plugging in or unplugging) breaks that for several minutes. Being plugged in or not is fine either way, as long as it's steady. Because the phone's internal heat differs between the two states, each one needs its own calibration.
+
+| Power mode | Detected when | Notes |
+| --- | --- | --- |
+| `UNPLUGGED` | Not plugged in | How real users will measure. The phone cools toward room temperature after unplugging; the monitor waits for that to settle. This is the default |
+| `TRICKLE` | Plugged in at 100% | The paper's protocol. Steady charger heat, but there's a cable at the forehead |
+| `CHARGING` | Plugged in below 100% | Not supported: active charging heats the phone a lot, and unevenly. The prep check blocks with "unplug, or wait until full" |
+
+- **The user picks the mode by plugging in or not,** so the app needs no setting. FeverPhone uses the calibration that matches the detected mode.
+- **Fallback:** if there's no calibration for that mode on this phone model yet, the app says so and points to the other mode.
+- **Settling:** a power change within the last 10 minutes counts as `SETTLING` (starting value, tune it).
+- **Provenance:** the power mode is saved with every session and reading `method`, for example `feverphone.dump.unplugged.v1`.
+
+**To measure on the Pixel 4:** after unplugging, log the thermistors with no test until the drift flattens. That gives the real settling time. Then collect calibration runs in both modes. If one mode settles far faster, or calibrates much better, make it the one the UI recommends.
+
 ### The agent
+
+The same tool loop serves two surfaces:
+
+- **Feedback cards,** triggered as below.
+- **A chatbot** the user can ask questions such as "how has my resting heart rate looked this week?".
+
+Where the chatbot sits in the UI (its own tab, a sheet from Today, or both) is to be decided. It needs a network connection. Offline, it says so, and every other screen keeps working.
 
 - **Model:** Claude Opus 5.5 with adaptive thinking. Revisit Sonnet or Haiku for cost after comparing outputs on real entries.
 - **Tools, all executed on the phone:**
@@ -180,7 +389,31 @@ data class MeasurementResult(
 
 The agent cites readings and never diagnoses. Every FeverPhone value is labelled as a research estimate until gate 2 passes (see Roadmap).
 
-### Privacy and data
+### Data provenance and privacy
+
+**Decision: everything is stored on the phone, and we build no cloud database.** The app is offline first. Only the chatbot needs a network connection.
+
+| Data | Stored in | Leaves the phone? |
+| --- | --- | --- |
+| Heart rate, temperature, steps, floors (`reading`) | Room, on the phone | Only as chatbot or agent tool results, and only the rows a tool call asks for |
+| Raw sessions (every sample) | CSV files in `filesDir` | Only if the user exports them |
+| Journal entries | Room | Only as tool results |
+| Chat history (`chat_message`) | Room | Resent to the model as conversation context on each chat call |
+| Calibration and settings | Room, DataStore | Never |
+
+What is out of scope:
+
+- no cloud database
+- no accounts or login
+- no sync between phones
+- no analytics or crash-reporting SDKs
+- no server-side copy of anything
+
+The proxy (`backend/`) is a relay that holds the API key. It stores and logs no request bodies.
+
+**Provenance:** every reading records its `method` (algorithm and version), `deviceModel`, `quality` and `sessionId`. The session records the raw file and any reference value. So any number shown to the user, or cited by the agent, traces back to the raw samples and the code version that produced it.
+
+**What works offline:** all measurements, history, trends, the journal and the red-flag rules. **What needs the network:** the chatbot and the feedback cards. Their failure path is the fixed fallback message.
 
 - **On-device storage:** one Room database in app-private storage, encrypted at rest by Android.
 - **Turn off backup:** set `android:allowBackup="false"` and exclusion rules. Otherwise Android uploads app data to the user's Google Drive by default.
@@ -206,6 +439,44 @@ Use bottom navigation for Today, Measure, Journal and Trends, with Settings in t
 - Use our own type scale with large numerals for readings, and collapsing large titles. Support dark mode from day one.
 - Show quality as a chip: "Good signal", or "Weak signal, retake". Never show a low-quality number big.
 - Judge smoothness only on release builds with R8 and a Baseline Profile, because debug Compose builds stutter.
+
+### Vision: eye tracking
+
+**Status (2026-10-17):**
+
+- **Foreground prototype working on the Pixel 7:** `prototypes/eyetrack/`, about 30 fps, measuring blink rate and gaze-shift rate.
+- **Passive (background) version:** specified in `prototypes/eyetrack/README.md`, not built yet.
+- **Pixel 4:** not tested yet.
+
+The README is the implementation guide. Read it before writing vision code.
+
+**What it measures:**
+
+- **Gaze:** the iris position between the eye corners (MediaPipe Face Landmarker, 478 points with irises). It's relative and uncalibrated.
+- **Blinks:** MediaPipe's eye-blink blendshapes.
+- **Gaze shifts:** the gaze moving more than 0.1 eye widths within 100 ms.
+
+**What it can't do:**
+
+- **Saccade speed:** the front camera is 30 fps at most, and a saccade lasts 20–200 ms.
+- **A screen gaze point:** there's no calibration.
+- **Overwhelm detection:** nothing in `Papers/` validates an eye-movement measure of overwhelm, so present the numbers as exploratory attention signals against the person's own baseline, not a diagnosis.
+
+**Passive mode rules** (details in the README):
+
+- **Service:** it's a camera foreground service started from a visible screen, with a persistent notification and Android's green camera dot. No reboot or background start is possible.
+- **Battery:** it runs at 15 fps and pauses with the screen off.
+- **Camera conflicts:** it yields to other camera apps and resumes afterwards.
+- **Storage:** it writes per-minute summary readings. No images are ever stored or sent.
+- **Heat:** it warms the phone, so it counts as `heatsPhone` and pauses around FeverPhone readings. This matters most on the Pixel 4, which is also the temperature phone.
+
+**Moving into the app:** `EyeMetrics` has no Android types, so it moves into `:sensing:vision` as is. The service becomes the module's passive collector, writing `Reading`s through `HealthRepository`:
+
+- `blink_rate_per_min`
+- `gaze_shift_rate_per_min`
+- face coverage, used as the quality score
+
+**Known issues:** looking down reads as half a blink, and the thresholds are untuned. The README has the fixes and a cued-recording test plan.
 
 ### Conventions
 
@@ -286,10 +557,11 @@ An exponential fit to pa-therm gave a heat-transfer constant k ≈ 0.21 /min, wi
 #### Android implementation
 
 1. **Prep checks:**
-   - Charging is on (`BatteryManager.isCharging`); the paper used a full charge on a trickle.
+   - `PhoneThermalMonitor` says `READY`. It blocks while the phone is still settling, too warm, or a heart-rate test ran in the last 10 minutes (see Measurement order and phone heat, in Design).
+   - Power mode is `UNPLUGGED` or `TRICKLE` (plugged in at 100%), with a calibration for that mode on this phone. `CHARGING` blocks the test (see Measurement order and phone heat, in Design).
    - Airplane mode is on (read `Settings.Global.AIRPLANE_MODE_ON` and ask the user to turn it on).
    - The app sets window brightness to 20%.
-   - At least 10 minutes have passed since the last reading.
+   - At least 10 minutes have passed since the last temperature reading.
    - Ask whether the room is roughly 18–24 °C.
 2. **60 s hand pre-hold** with a countdown, holding the corners in "camera grip". This settles the phone and measures drift and IT.
 3. **90 s forehead contact,** landscape, screen on (`FLAG_KEEP_SCREEN_ON`):
@@ -310,7 +582,8 @@ An exponential fit to pa-therm gave a heat-transfer constant k ≈ 0.21 /min, wi
 
 #### First steps
 
-- [ ] Charge the Pixel 4 to 100% and run `tools/forehead_test_app.sh` three more times, with an oral thermometer reading each time
+- [ ] Log the Pixel 4 unplugged and untouched until the thermistor drift flattens, to measure the real settling time
+- [ ] Run `tools/forehead_test_app.sh` three more times in each power mode (unplugged after settling, and plugged in at 100%), with an oral thermometer reading each time
 - [ ] Run the same test on the Pixel 7
 - [ ] Email the authors for code, data and their thermistor choice
 - [ ] Build the water-bag rig (sous-vide stick, sealed bag, cardboard box with a forehead-sized hole)
@@ -599,21 +872,56 @@ The sound of a forced exhale encodes airflow. The pipeline:
 
 #### Android implementation
 
-1. **Capture:** `AudioRecord` with `MediaRecorder.AudioSource.UNPROCESSED`. Check `AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED` first. Use 48 kHz.
+1. **Capture:** `AudioRecord` with `MediaRecorder.AudioSource.VOICE_RECOGNITION` at 48 kHz, mono, bottom mic.
+   - Create `AutomaticGainControl`, `NoiseSuppressor` and `AcousticEchoCanceler` on the session if available, and call `setEnabled(false)` on each.
+   - **Don't use `UNPROCESSED`:** neither Pixel supports it.
+   - **Don't use `MIC`:** it has a hidden expander on the Pixel 4.
+   - **Never use `VOICE_COMMUNICATION`:** it has a noise gate and adaptive gain.
+   - See the mic linearity results below.
 2. **Coaching UI:** full inhale, then blast it out. Show a live flow bar like their ball-in-cylinder.
 3. **Features:** compute them on the phone.
-4. **Model:** train in `analysis/` on paired data from a spirometer.
+4. **Model, hackathon version:** peak expiratory flow only, from the peak of the flow envelope, with a straight-line fit per phone against a peak-flow meter.
+   - Peak-flow meters cost about $20 at a pharmacy, much cheaper than a spirometer.
+   - FEV1 and FVC need a spirometer, so leave them out for now.
+5. **Model, full version:** train in `analysis/` on paired data from a spirometer.
+
+#### Mic linearity results (2026-10-17)
+
+`tools/mictest/` plays a 1 kHz tone in 6 dB steps (−36 → −6 → −36 dBFS) while the phone records it. A linear source records 6 dB per step, the same up and down. The full table is in `tools/mictest/README.md`.
+
+| Source | Pixel 4 | Pixel 7 |
+| --- | --- | --- |
+| `VOICE_RECOGNITION` | ✅ slope 0.992, max deviation 0.27 dB | ✅ slope 0.975, max deviation 0.71 dB |
+| `MIC` | ❌ expander pushes quiet sounds down | ✅ slope 0.997 |
+| `VOICE_COMMUNICATION` | ❌ noise gate below about −24 dBFS | ❌ adaptive gain |
+
+Neither phone exposes automatic gain control as an effect, and Android's framework pre-processing (AEC, NS) applies only to `voice_communication`. The `MIC` expander on the Pixel 4 lives in the Qualcomm DSP and is invisible in every config file, so only a measurement shows it.
+
+#### Peak-flow attempt (2026-10-17): negative result
+
+Four people did 8 peak-flow-meter blows each (top-3 means 538, 460, 337, 283 L/min) and 3–4 blows at the Pixel 4. The phone was upright, about 1 m away, and the blow was aimed over its top edge. The tools are `tools/mictest/blow.sh` and `analyze_blow.py`; the recordings stay local in the gitignored `tools/mictest/out/`.
+
+- **Wind was the first problem.** At the short wire distance, every blow clipped. The low-frequency energy below 300 Hz is wind buffeting the phone, not sound. Above about 3 kHz the wind has died out, so the 8–20 kHz airflow hiss is unaffected by it.
+- **The hiss feature doesn't separate people.** P1–P3 read within 1.2 dB of each other despite meter readings of 337–538 L/min. Per-person spread was ±2–6 dB per blow. Leave-one-out error was about 300 L/min, which is useless.
+- **13 candidate features didn't fix it.** Between-person spread divided by within-person spread was at most 1.7. The spectral centroid ranked all four people correctly, but with between/within at 0.4, so treat it as chance (1 in 24 for a perfect 4-person ranking) and as a hypothesis only.
+- **Conclusion:** at a distance and without fixed geometry, aim and lip shape vary more than airflow does. Fixed geometry (a tube, blowing through the meter while the phone listens) would be the next test. The team chose not to add components, so peak flow is dropped. Respiratory candidates without extra hardware are breathing rate from the accelerometer (phone on the chest) or from the heart-rate test, and a sustained-vowel duration.
+
+**Gotcha:** the first run showed heavy compression on every source. It came from the laptop's audio enhancements (Windows/Realtek), not the phone. Turn enhancements off before running the test.
 
 #### First steps
 
+- [x] Check that a mic source without adaptive gain exists: `VOICE_RECOGNITION`, on both Pixels
+- [ ] Clipping check: record several hard blows at arm's length and look at the peak level (the linearity test stopped at −6 dBFS played)
+- [ ] Peak-flow calibration on the Pixel 7: 3 blows per person into the meter and 3 at the phone, then fit a line from the envelope peak to the meter's L/min
 - [ ] Ask the SpiroSmart authors in the lab for code and data
-- [ ] Borrow a portable spirometer before collecting anything
+- [ ] Borrow a portable spirometer before attempting FEV1 or FVC
 
 #### Watch out for
 
 - **Needs a quiet room.** Inhalation is inaudible.
 - **FVC is least accurate:** only about the first 3 s of the exhale are audible.
-- **Mic responses differ per phone,** and the paper had only one phone.
+- **Mic responses differ per phone,** and the paper had only one phone. Absolute level differs between phones, so calibrate each one.
+- **Hidden DSP processing differs per phone and per source.** Run `tools/mictest/run_linearity.sh` on any new phone before trusting its envelope.
 
 ### Saleheen 2020: lung function from a vowel
 
@@ -638,7 +946,7 @@ The sound of a forced exhale encodes airflow. The pipeline:
 
 #### Android implementation
 
-1. `AudioRecord` at 16 kHz or higher, `UNPROCESSED` source, with loudness normalisation as in the paper.
+1. `AudioRecord` at 16 kHz or higher on the `VOICE_RECOGNITION` source with effects off (see SpiroSmart), with loudness normalisation as in the paper.
 2. Port the feature extraction, which is a reimplementation job (MFCC, chroma, pitch for jitter and shimmer). Train in `analysis/`.
 
 #### Watch out for
@@ -669,7 +977,7 @@ The sound of a forced exhale encodes airflow. The pipeline:
 
 Not for v1. If we try it, first sweep 17–22.5 kHz through a Pixel speaker and record it to see whether the hardware can do it. Then:
 
-- **Capture:** `AudioTrack` and `AudioRecord` at 48 kHz on the `UNPROCESSED` source.
+- **Capture:** `AudioTrack` and `AudioRecord` at 48 kHz on the `VOICE_RECOGNITION` source (`UNPROCESSED` isn't supported on our Pixels). Linearity is checked only at 1 kHz so far, so check its response at 17–22.5 kHz too.
 - **GLI-2012:** implement the predicted-value equations, and collect demographics.
 
 #### Watch out for
@@ -750,7 +1058,7 @@ kotlinx-coroutines-test       = { module = "org.jetbrains.kotlinx:kotlinx-corout
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />  <!-- eye tracking, later -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />              <!-- lung papers, later -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />              <!-- lung tests: VOICE_RECOGNITION source -->
     <!-- Development permission, granted once per phone:
          adb shell pm grant edu.uw.ubicomp.apollo android.permission.DUMP -->
     <uses-permission android:name="android.permission.DUMP"
@@ -924,9 +1232,11 @@ Start it from a visible screen, for example a "Count floors" toggle. Android ref
 
 ### Room entities
 
+These live in `:storage` and stay private to it. Other modules see the plain `Reading` and `JournalEntry` from `:core`, and `:storage` maps between the two.
+
 ```kotlin
-@Entity(indices = [Index("metric", "startedAt")])
-data class Reading(
+@Entity(tableName = "reading", indices = [Index("metric", "startedAt")])
+data class ReadingEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val metric: String,            // "core_temp_c", "heart_rate_bpm", "floors", "steps"
     val value: Double,
@@ -939,8 +1249,8 @@ data class Reading(
     val deviceModel: String,       // Build.MODEL
 )
 
-@Entity
-data class Session(
+@Entity(tableName = "session")
+data class SessionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val kind: String,
     val startedAt: Long,
@@ -952,13 +1262,13 @@ data class Session(
     val notes: String?,
 )
 
-@Entity
-data class JournalEntry(
+@Entity(tableName = "journal_entry")
+data class JournalEntryEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val createdAt: Long,
     val text: String,
     val mood: Int?,                // 1..5
-    val tags: String,              // comma-separated
+    val tags: String,              // comma-separated; :core's JournalEntry uses List<String>
 )
 ```
 
@@ -1028,6 +1338,40 @@ async def messages(req: Request):
    - Android SDK Platform-Tools
 3. Clone the repo and open the project folder in Android Studio.
 
+### Mac and Windows
+
+The team is on both, and that is fine: Android Studio, Gradle, the emulator and adb all run on both. These are the things that actually break between the two, and the fix for each. Set them up in Phase 0, before the first feature branch.
+
+| Problem | Fix |
+| --- | --- |
+| **Line endings.** Windows Git converts files to CRLF, which breaks `gradlew` and every `.sh` script on Mac, and turns whole files into diffs | Commit a `.gitattributes` (below). Then nobody's `core.autocrlf` setting matters |
+| **Debug signing keys differ per laptop.** An APK built on one laptop can't install over one built on another; the phone demands an uninstall, and that **deletes the Room data and the DUMP grant** | Commit one shared `keystore/debug.keystore` (debug only, never a release key), and point `signingConfigs.debug` at it in `app/build.gradle.kts` |
+| **SDK path.** `local.properties` holds `sdk.dir`, which differs per machine (`~/Library/Android/sdk` vs `%LOCALAPPDATA%\Android\Sdk`) | Never commit `local.properties`; Android Studio writes it. Scripts read `ANDROID_HOME` |
+| **JDK.** Different installed JDKs give different build errors | Use Android Studio's bundled JDK, with the Gradle toolchain at 17. Don't install your own |
+| **Gradle wrapper.** | Mac runs `./gradlew`, Windows runs `gradlew.bat`. Commit both, and `gradle/wrapper/` |
+| **Shell scripts in `tools/`** use bash, and macOS's `say` for spoken cues | On Windows, run them in Git Bash. Move the spoken cues into the app itself (Android `TextToSpeech`); the FeverPhone flow needs them anyway. Until then, the scripts already print each cue, and on Windows the `say` call just fails harmlessly. `probe-app/build.sh` defaults to the Mac SDK path, so set `ANDROID_HOME` on Windows |
+| **Python** is `python3` on Mac and `python` / `py` on Windows | Use a venv with `analysis/requirements.txt`. Docs say `python3`; Windows users substitute `py` |
+| **Emulator images.** Apple Silicon needs `arm64-v8a`, Windows/Intel needs `x86_64` | AVDs are per machine and never committed. Everyone makes their own (see Emulator) |
+| **Long paths on Windows.** Gradle build folders exceed 260 characters | Run `git config --global core.longpaths true`, and keep the clone near the drive root |
+| **adb on Windows** sometimes doesn't see a Pixel | Install **Google USB Driver** from the SDK Manager |
+| **One Pixel 4, several laptops** | Use wireless debugging: *Developer options → Wireless debugging*, then `adb pair` and `adb connect` from any laptop on the same Wi-Fi. Any OS can deploy to the sensor phone without swapping cables |
+
+```gitattributes
+# .gitattributes: the repo stores LF; Windows tools that need CRLF get it
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.png binary
+*.jpg binary
+*.pdf binary
+*.docx binary
+*.jar binary
+*.keystore binary
+```
+
+Commit `.gitattributes` first. Then, if files already show as changed, run `git add --renormalize .` once.
+
 ### Run on a real Pixel
 
 1. On the phone, open **Settings → About phone** and tap **Build number** 7 times. Then turn on **Developer options → USB debugging**.
@@ -1045,7 +1389,8 @@ adb shell pm grant edu.uw.ubicomp.apollo android.permission.DUMP
 Good for UI, navigation, journal, agent, storage and anything fed by a replay source. Every teammate can run one locally for free.
 
 ```bash
-# macOS on Apple Silicon: use arm64-v8a images (Windows/Intel: x86_64)
+# macOS on Apple Silicon: use arm64-v8a images. Windows/Intel: replace arm64-v8a with x86_64,
+# and in Git Bash use SDK="$LOCALAPPDATA/Android/Sdk" (or just use Device Manager in Android Studio).
 SDK=~/Library/Android/sdk
 $SDK/cmdline-tools/latest/bin/sdkmanager "system-images;android-35;google_apis_playstore;arm64-v8a"
 $SDK/cmdline-tools/latest/bin/avdmanager create avd -n Pixel7_API35 \
@@ -1101,7 +1446,9 @@ Avoid **Firebase Studio** (formerly Project IDX): it stopped accepting new works
 ### Phases and gates
 
 ```text
-Phase 0  Scaffold            app shell, theme, Room, replay sources, ThermistorReader port
+Phase 0  Scaffold            .gitattributes, shared debug keystore, root + module CLAUDE.md, Gradle modules,
+   │                         :core interfaces merged, then: app shell, theme, Room, replay sources,
+   │                         ThermistorReader port, PhoneThermalMonitor
    │
 Phase 1  Sensing             FeverPhone data collection + linear model · fingertip HR · steps and floors
    │     ── Gate 1  Heart rate: RMSE ≤ 5 bpm (or 10%) vs chest strap or oximeter, ≥10 people, rest and post-exercise
@@ -1118,7 +1465,9 @@ Each gate is a measurement against a reference device, not a code milestone. If 
 
 ### First two weeks
 
-- [ ] Create the Android Studio project with the stack and layout above
+- [ ] Commit `.gitattributes`, the shared debug keystore and the root `CLAUDE.md` (see Mac and Windows, in Dev setup)
+- [ ] Create the Android Studio project with the stack and Gradle modules above
+- [ ] Write and merge `:core` (Shared interfaces, in Design) before anyone else branches
 - [ ] Theme, bottom navigation and empty screens for Today, Measure, Journal and Trends, all with previews
 - [ ] Room entities and DAOs for reading, session, journal_entry, feedback and calibration
 - [ ] Port `ThermistorReader`, plus a replay source over `data/forehead_app_20261016_162855.csv`
@@ -1130,10 +1479,14 @@ Each gate is a measurement against a reference device, not a code milestone. If 
 ### Open decisions
 
 - [ ] Can the agent call leave the phone? The fully on-device alternative, Gemini Nano, needs a Pixel 9 or newer and is a much smaller model
-- [ ] What should eye tracking measure: blink rate, drowsiness or attention? That sets frame rate and battery cost
+- [x] What should eye tracking measure? Blink rate and gaze-shift rate, at 15 fps when passive (`prototypes/eyetrack/README.md`)
+- [ ] Eye tracking: where does it appear in the UI, and is passive mode worth the battery and heat? Measure 30 min on both Pixels first
 - [ ] Buy and root a Pixel 6 for full-fidelity FeverPhone, or stay on the no-root route?
 - [ ] IRB: which data collection needs approval before we involve people outside the team?
 - [ ] Is the app called Apollo, after the repo?
+- [ ] Where do the "temperature first?" prompt and the phone-heat status appear in the UI: a dialog, a combined check-up flow, or the Measure screen?
+- [ ] Where does the chatbot live: its own tab, or a sheet from Today?
+- [ ] API key for the hackathon demo: deploy the proxy, or keep the key in `local.properties` (gitignored) and build it into team-only APKs? The second is faster, but anyone with the APK can extract the key, so switch to the proxy before the APK leaves the team
 
 ### Risks
 
@@ -1145,6 +1498,9 @@ Each gate is a measurement against a reference device, not a code milestone. If 
 | The LLM gives medical advice | Health feedback can cause harm | Red-flag rules in code first; cite readings; never diagnose |
 | Medical-device rules | "Detects fever" is a diagnostic claim | Frame as research or wellness until validated |
 | Phone sleeps mid-measurement | Lost data in our first forehead test | Measurements run in a foreground activity with the screen kept on |
+| Heart-rate test heats the phone before a temperature test | Torch and camera warm the thermistors, so FeverPhone reads high or noisy | Ask "temperature first?"; `PhoneThermalMonitor` blocks until the phone settles |
+| Reinstalling from another laptop wipes the phone | A signing-key mismatch forces an uninstall, losing Room data and the DUMP grant | Shared debug keystore in the repo |
+| Parallel agents edit the same files | Merge conflicts, and features coupling to each other | Gradle modules, `:core`-only dependencies, file ownership in `CLAUDE.md` |
 
 ### Sources
 

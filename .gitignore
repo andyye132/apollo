@@ -15,3 +15,11 @@ local.properties
 captures/
 .cxx/
 .kotlin/
+# MicTest build output, local signing key and recordings
+tools/mictest/build/
+tools/mictest/debug.keystore
+tools/mictest/out/
+
+# Android Studio per-user project files
+.idea/
+*.iml

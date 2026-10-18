@@ -8,6 +8,7 @@ import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.EditText;
@@ -114,12 +115,20 @@ public class HeartRateActivity extends Activity implements PpgCamera.Listener, a
         phase = Phase.INTRO;
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         LinearLayout col = Ui.column(this);
-        Ui.add(col, Ui.homeLink(this), 0);
-        Ui.add(col, Ui.label(this, "Heart rate"), 4);
-        Ui.add(col, Ui.title(this, "Camera pulse check"), 4);
+        Ui.add(col, Ui.homeLink(this, "curious"), 0);
+        Ui.add(col, Ui.label(this, "Heart rate"), 8);
+        Ui.add(col, Ui.title(this, "Find your\nrhythm."), 6);
+        Ui.add(col, Ui.text(this, "A quick pulse check, with your camera.", 16, Ui.MUTED, false), 6);
+        LinearLayout hero = Ui.add(col, Ui.card(this), 18);   // white, like the mascot's own background
+        LinearLayout heroRow = Ui.add(hero, Ui.row(this), 0);
+        heroRow.setGravity(Gravity.CENTER);
+        heroRow.addView(Ui.mascot(this, "hello", 112));
+        View phone = Ui.icon(this, "phone", Ui.LEAF, 84);
+        ((LinearLayout.LayoutParams) phone.getLayoutParams()).leftMargin = Ui.dp(this, 18);
+        heroRow.addView(phone);
         Ui.add(col, Ui.text(this, "The flash shines into your skin and the camera watches it dim slightly each "
-                + "time your heart pushes blood through. About 30 seconds.", 15, Ui.MUTED, false), 8);
-        if (note != null) Ui.add(col, Ui.badge(this, note, Ui.WARN), 12);
+                + "time your heart pushes blood through. About 30 seconds.", 14, Ui.MUTED, false), 14);
+        if (note != null) Ui.wrap(col, Ui.badge(this, note, Ui.WARN), 12);
 
         Ui.add(col, new StepList(this, Ui.HEART,
                 "Cover the camera and the flash with your fingertip (90% covered is enough)",
@@ -537,15 +546,19 @@ public class HeartRateActivity extends Activity implements PpgCamera.Listener, a
         phase = Phase.REPORT;
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         LinearLayout col = Ui.column(this);
-        Ui.add(col, Ui.homeLink(this), 0);
-        Ui.add(col, Ui.label(this, "Heart rate · " + DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(startedAtMs))), 4);
-
-        LinearLayout head = Ui.add(col, Ui.row(this), 6);
         boolean poor = "POOR".equals(r.verdict);   // never show an unreliable number big
-        head.addView(Ui.text(this, poor ? "--" : String.format(Locale.US, "%.0f", r.hr), 64, poor ? Ui.MUTED : Ui.TEXT, true));
-        TextView unit = Ui.text(this, poor ? "  no reliable reading" : "  bpm", 20, Ui.MUTED, false);
-        head.addView(unit);
-        Ui.add(col, Ui.badge(this, verdictText(r.verdict), Ui.verdictColor(r.verdict)), 4);
+        boolean good = "GOOD".equals(r.verdict);
+        Ui.add(col, Ui.homeLink(this, poor ? "thinking" : good ? "happy" : "curious"), 0);
+        Ui.add(col, Ui.label(this, "Your pulse check · " + DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(startedAtMs))), 8);
+        Ui.add(col, Ui.title(this, poor ? "Let's give it\nanother moment." : good ? "Hello,\nheartbeat." : "A little faint,\nbut here it is."), 6);
+
+        LinearLayout head = Ui.add(col, Ui.row(this), 14);
+        LinearLayout numCol = Ui.column(this);
+        numCol.addView(Ui.number(this, poor ? "--" : String.format(Locale.US, "%.0f", r.hr), 84));
+        numCol.addView(Ui.text(this, poor ? "No reliable reading" : "beats per minute", 15, Ui.MUTED, false));
+        head.addView(numCol, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        head.addView(Ui.mascot(this, poor ? "thinking" : good ? "happy" : "curious", 104));
+        Ui.wrap(col, Ui.badge(this, verdictText(r.verdict), Ui.verdictColor(r.verdict)), 4);
         Ui.add(col, Ui.text(this, verdictWhy(r), 14, Ui.MUTED, false), 10);
 
         // Reference comparison, the reason this prototype exists.

@@ -35,7 +35,7 @@ from pathlib import Path
 import numpy as np
 
 LAG_S = 10
-SKIP_PREFIX = ("headroom", "bcl-virt-monitor")
+SKIP_PREFIX = ("headroom", "bcl-virt-monitor", "_")   # _still/_gyro are logs, not sensors
 DRIFT_LIMIT = 0.1   # °C/min, the app's readiness rule
 
 

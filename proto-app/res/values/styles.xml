@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Apollo: warm ivory canvas with dark status/navigation icons, living-coral accent (cursors, dialogs, switches). -->
+<resources>
+    <style name="Apollo" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_bg</item>
+        <item name="android:colorPrimary">#F6F3EE</item>
+        <item name="android:colorPrimaryDark">#F6F3EE</item>
+        <item name="android:colorAccent">#E8705E</item>
+        <item name="android:colorControlActivated">#E8705E</item>
+        <item name="android:statusBarColor">#F6F3EE</item>
+        <item name="android:navigationBarColor">#F6F3EE</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:textColorPrimary">#262421</item>
+        <item name="android:textColorHint">#A9A39A</item>
+    </style>
+</resources>

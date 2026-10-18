@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 out=$(mktemp -d)
-javac -d "$out" proto-app/src/edu/uw/ubicomp/apolloproto/{Dsp,PpgAnalysis,FeverAnalysis,WatchDecoder,Sonar,JitaTrigger,TouchWorld,SkinToCore,ExposureControl,WatchAnalysis,JoltDetector}.java \
+javac -d "$out" proto-app/src/edu/uw/ubicomp/apolloproto/{Dsp,PpgAnalysis,FeverAnalysis,WatchDecoder,Sonar,JitaTrigger,TouchWorld,SkinToCore,ExposureControl,WatchAnalysis,JoltDetector,Steadiness}.java \
   proto-app/test/edu/uw/ubicomp/apolloproto/{Check,WatchCheck,CoreCheck}.java
 for f in "$@"; do
   case "$f" in

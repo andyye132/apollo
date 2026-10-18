@@ -63,16 +63,16 @@ public class TouchLabActivity extends Activity {
 
         Board(Context c) {
             super(c);
-            setBackgroundColor(0xFF0B1015);
-            ball.setColor(Ui.ACCENT);
-            shine.setColor(0x99FFFFFF);
+            setBackgroundColor(Ui.BG);
+            ball.setColor(Ui.CORAL);
+            shine.setColor(0xAAFFFFFF);
             basket.setColor(Ui.STEPS);
             basket.setStyle(Paint.Style.STROKE);
             basket.setStrokeWidth(Ui.dp(c, 3));
-            star.setColor(Ui.TEMP);
+            star.setColor(0xFFE9A93B);   // gold
             ring.setStyle(Paint.Style.STROKE);
             ring.setStrokeWidth(Ui.dp(c, 1));
-            ring.setColor(0x33FFFFFF);
+            ring.setColor(0x33000000);
         }
 
         @Override
@@ -122,7 +122,7 @@ public class TouchLabActivity extends Activity {
                     float d = world.field[r * TouchWorld.COLS + col];
                     if (d < 0.04f) continue;
                     int dots = 1 + (int) (d * 4);
-                    gravel.setColor(blend(0xFF6B5A44, 0xFFE8C99A, Math.min(1f, d)));
+                    gravel.setColor(blend(0xFFE3D2B5, 0xFF9C7A4E, Math.min(1f, d)));   // light sand to packed sand
                     gravel.setAlpha((int) (90 + 165 * Math.min(1f, d)));
                     for (int k = 0; k < dots; k++) {
                         int hsh = (r * 73856093) ^ (col * 19349663) ^ (k * 83492791);

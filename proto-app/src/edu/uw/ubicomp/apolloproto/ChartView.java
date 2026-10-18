@@ -48,6 +48,7 @@ final class ChartView extends View {
         grid.setStrokeWidth(dp);
         label.setColor(Ui.MUTED);
         label.setTextSize(11 * dp);
+        label.setTypeface(Ui.font(c, 500, 14));
     }
 
     ChartView title(String t, String unit) {
@@ -98,8 +99,9 @@ final class ChartView extends View {
         float w = getWidth(), h = getHeight();
         float left = hideY ? 4 * dp : 44 * dp, right = w - 6 * dp, top = 26 * dp, bottom = h - 20 * dp;
         label.setTextAlign(Paint.Align.LEFT);
-        label.setColor(Ui.MUTED);
+        label.setColor(Ui.TEXT);
         c.drawText(title + (unit.isEmpty() ? "" : "  (" + unit + ")"), 0, 14 * dp, label);
+        label.setColor(Ui.MUTED);
 
         double x0 = Double.MAX_VALUE, x1 = -Double.MAX_VALUE, y0 = Double.MAX_VALUE, y1 = -Double.MAX_VALUE;
         for (Series s : series) {

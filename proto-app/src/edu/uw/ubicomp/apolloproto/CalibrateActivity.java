@@ -52,14 +52,19 @@ public class CalibrateActivity extends Activity implements ThermalMonitor.Listen
     private long openMs, runId;
     private double startT, contactT;
     private boolean anyway;
-    private String site;   // "arm", or the forehead protocol ("hand" / "table")
+    private String site;   // the forehead protocol whose k this calibrates: "hand" (hand-held, the only one offered)
+    /** What touches the screen: "forehead" (a calibration run), "hand" (control: held in the air), "none" (control: on the table). */
+    private String contact;
+    private final List<double[]> stillLog = new ArrayList<>();   // {t, still 1/0, gyro rad/s} before Start
     private String person = "";
     private int lastRemaining = Integer.MAX_VALUE;
     private ThermalMonitor.State startState;
     private PrintWriter raw;
     private File rawFile;
     private StepList steps;
-    private TextView statusText, detailText, countdown, phaseText, nextText, startButton, anywayButton;
+    private TextView statusText, detailText, phaseText, nextText, startButton, anywayButton, stepLabel;
+    private Ui.Readiness readiness;
+    private RingView countdown;
 
     private final Runnable tick = new Runnable() {
         @Override
@@ -75,7 +80,8 @@ public class CalibrateActivity extends Activity implements ThermalMonitor.Listen
         monitor = ThermalMonitor.get(this);
         speaker = new Speaker(this);
         openMs = System.currentTimeMillis();
-        site = Store.prefs(this).getString("calib_site", "arm");
+        site = "hand";   // hand-held forehead only (arm and table calibration were dropped, Oct 2026)
+        contact = Store.prefs(this).getString("calib_contact", "forehead");
         showIntro(null);
     }
 
@@ -120,8 +126,17 @@ public class CalibrateActivity extends Activity implements ThermalMonitor.Listen
         return onArm() ? "arm" : "table".equals(site) ? "forehead (on a table)" : "forehead (hand-held)";
     }
 
+    private boolean control() {
+        return !"forehead".equals(contact);
+    }
+
+    private String contactName() {
+        return "hand".equals(contact) ? "Hand-only control" : "none".equals(contact) ? "Phone-only control" : "Forehead calibration";
+    }
+
+    /** Plugged in at 100% (trickle) shares the unplugged calibration: the contact physics is the same. */
     private String key(String powerMode) {
-        return powerMode + "|" + site;
+        return ("TRICKLE".equals(powerMode) ? "UNPLUGGED" : powerMode) + "|" + site;
     }
 
     // ---- Intro ----------------------------------------------------------------------------------
@@ -129,59 +144,64 @@ public class CalibrateActivity extends Activity implements ThermalMonitor.Listen
     private void showIntro(String note) {
         phase = Phase.INTRO;
         restoreScreen();
+        holdForBaseline();
         LinearLayout col = Ui.column(this);
         Ui.add(col, Ui.homeLink(this), 0);
         Ui.add(col, Ui.label(this, "Forehead temperature · setup"), 4);
-        Ui.add(col, Ui.title(this, "Calibrate on your skin"), 4);
-        Ui.add(col, Ui.text(this, "The phone measures how fast skin warms it. To turn that into degrees it needs one "
-                + "number per sensor, k, which you get by pressing it on skin whose temperature you measured. "
-                + "Do 3 to 5 runs once; after that every reading uses them.", 15, Ui.MUTED, false), 8);
-        if (note != null) Ui.add(col, Ui.badge(this, note, Ui.WARN), 12);
+        Ui.add(col, Ui.title(this, "Calibrate"), 4);
+        Ui.add(col, Ui.text(this, "Forehead runs, each with your thermometer reading, teach the app how your forehead warms the "
+                + "phone. The two control runs measure the warming that doesn't come from your forehead.", 15, Ui.MUTED, false), 8);
+        if (note != null) Ui.wrap(col, Ui.badge(this, note, Ui.WARN), 12);
 
-        LinearLayout pick = Ui.add(col, Ui.row(this), 14);
-        LinearLayout.LayoutParams l1 = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
-        pick.addView(Ui.button(this, "Arm", Ui.TEMP, onArm(), v -> setSite("arm")), l1);
-        LinearLayout.LayoutParams l2 = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
-        l2.leftMargin = Ui.dp(this, 10);
-        String forehead = Store.prefs(this).getString("fever_protocol", "hand");
-        pick.addView(Ui.button(this, "Forehead", Ui.TEMP, !onArm(), v -> setSite(forehead)), l2);
-        Ui.add(col, Ui.text(this, onArm()
-                ? "Arm: inner forearm, easy to measure. Arm and forehead contact differ, so forehead readings from an "
-                + "arm calibration may carry an offset; a forehead calibration avoids that."
-                : "Forehead, " + ("table".equals(site) ? "resting on the phone on a table" : "hand-held")
-                + " (the protocol picked on the forehead screen). Needs a thermometer that reads skin, not body temperature.",
+        String[] keys = {"forehead", "hand", "none"};
+        int current = java.util.Arrays.asList(keys).indexOf(contact);
+        Ui.add(col, Ui.segmented(this, new String[]{"Forehead", "Hand only", "Phone only"}, current, i -> setContact(keys[i])), 16);
+        Ui.add(col, Ui.text(this, "hand".equals(contact)
+                ? "Control: hold the phone exactly as in a forehead run, but in the air with the screen facing away from you. "
+                + "It measures how much your hand warms the phone."
+                : "none".equals(contact)
+                ? "Control: the phone stays flat on the table the whole time. It measures how much the phone warms itself "
+                + "during a test (black screen, voice)."
+                : "Calibration: the screen on your forehead, hand-held, with your thermometer reading taken right before.",
                 13, Ui.MUTED, false), 6);
 
-        String spot = onArm() ? "inner forearm" : "forehead";
-        steps = Ui.add(col, new StepList(this, Ui.TEMP,
-                "table".equals(site) ? "Leave the phone screen-up on the table until it says ready"
-                        : "Leave the phone on the table until it says ready",
-                "Measure your skin where you'll press (" + spot + ") and remember the number",
-                "table".equals(site) ? "Tap Start. You have 10 seconds to get your forehead over the phone"
-                        : "Tap Start, then pick the phone up by its edges. You have 10 seconds",
-                "At the buzz, press the screen flat on your " + spot + " and hold still until it says done (90 s)",
-                "Type the thermometer reading"), 16);
+        steps = Ui.add(col, new StepList(this, Ui.TEMP, "hand".equals(contact) ? new String[]{
+                "Leave the phone flat on the table, untouched, until it says ready",
+                "Tap Start, then pick it up by its edges the way you would for a forehead run (10 s)",
+                "At the buzz, hold it still in the air, screen facing away from you, for 90 s",
+                "Save the run"} : "none".equals(contact) ? new String[]{
+                "Leave the phone flat on the table, untouched, until it says ready",
+                "Tap Start and don't touch the phone",
+                "It records for 100 s by itself",
+                "Save the run"} : new String[]{
+                "Leave the phone flat on the table, untouched, until it says ready",
+                "Take your temperature with your thermometer",
+                "Tap Start, then pick the phone up by its edges (10 s)",
+                "At the buzz, press the screen flat on your forehead and hold still until it says done (90 s)",
+                "Type the thermometer reading"}), 16);
 
-        LinearLayout ready = Ui.add(col, Ui.card(this), 12);
-        Ui.add(ready, Ui.label(this, "Is the phone ready?"), 0);
-        statusText = Ui.add(ready, Ui.text(this, "Checking…", 16, Ui.TEXT, true), 8);
-        detailText = Ui.add(ready, Ui.text(this, "", 13, Ui.MUTED, false), 6);
+        readiness = new Ui.Readiness(this);
+        Ui.add(col, readiness.card, 12);
+        statusText = readiness.message;
+        detailText = readiness.detail;
 
         storedCard(col);
 
         LinearLayout tips = Ui.add(col, Ui.card(this), 12);
         Ui.add(tips, Ui.label(this, "Tips"), 0);
         String[] how = {
-                "•  Take the skin reading right before Start, at the exact spot. If your thermometer has a surface or "
-                        + "object mode, use it: the normal mode shows an estimated body temperature (~37 °C), not skin (~33-35 °C).",
-                "•  Same pressure each run: firm and flat, like holding it to your ear. Pressure changes k.",
-                "•  The skin must be at least 2 °C warmer than the phone, so start with a cool, settled phone.",
-                "•  Spread runs over different days or skin temperatures so k isn't tuned to one moment.",
+                "•  Thermometer: its normal (body temperature) mode, right before Start.",
+                "•  Same grip and firmness every run, by the edges: firm and flat, like holding it to your ear.",
+                "•  Don't touch the phone while it gets ready: it needs a minute lying still to learn its own drift.",
+                "•  Name or initials on every run, so each person's runs can be told apart.",
         };
         for (String s : how) Ui.add(tips, Ui.text(this, s, 14, Ui.TEXT, false), 8);
 
         startButton = Ui.add(col, Ui.button(this, "Start", Ui.TEMP, true, v -> start(false)), 20);
         anywayButton = Ui.add(col, Ui.button(this, "Start anyway (phone not steady)", Ui.MUTED, false, v -> start(true)), 10);
+        Ui.add(col, Ui.text(this, "Starting on a phone that is still warming or cooling gives wrong readings (a chilled phone read "
+                + "4 °F low). Don't cool it in a fridge: it warms unevenly for 20+ minutes and can collect condensation. "
+                + "Let it sit on the table instead.", 12, Ui.MUTED, false), 6);
         setContentView(Ui.page(this, col));
         updateIntro();
     }
@@ -214,6 +234,13 @@ public class CalibrateActivity extends Activity implements ThermalMonitor.Listen
         return String.format(Locale.US, "%.3f /min · ±%.0f%% · %d runs", m, 100 * Dsp.std(k) / Dsp.mean(k), k.length);
     }
 
+    private void setContact(String c) {
+        if (c.equals(contact)) return;
+        contact = c;
+        Store.prefs(this).edit().putString("calib_contact", contact).apply();
+        showIntro(null);
+    }
+
     private void setSite(String s) {
         if (s.equals(site)) return;
         site = s;
@@ -225,8 +252,7 @@ public class CalibrateActivity extends Activity implements ThermalMonitor.Listen
         if (statusText == null) return;
         ThermalMonitor.State s = monitor.state();
         boolean ready = "READY".equals(s.verdict), unsupported = "UNSUPPORTED".equals(s.verdict);
-        statusText.setText(s.message);
-        statusText.setTextColor(Ui.verdictColor(s.verdict));
+        readiness.show(s, "");
         detailText.setText(String.format(Locale.US, "Phone %s · %s · power: %s",
                 Double.isNaN(s.phoneC) ? "-" : String.format(Locale.US, "%.1f °C", s.phoneC),
                 Double.isNaN(s.driftCPerMin) ? "drift -" : String.format(Locale.US, "%+.2f °C/min", s.driftCPerMin),
@@ -242,7 +268,7 @@ public class CalibrateActivity extends Activity implements ThermalMonitor.Listen
     @Override
     public void onSamples(long epochMs, List<ThermalMonitor.Sample> samples) {
         Phase p = phase;
-        if (p == Phase.ANALYZING || p == Phase.REPORT) return;
+        if (p != Phase.WAIT && p != Phase.CONTACT) return;   // before Start, the monitor's own history is the baseline
         double t = (epochMs - openMs) / 1000.0;
         synchronized (data) {
             PrintWriter w = raw;   // the main thread nulls it when a run ends
@@ -250,9 +276,11 @@ public class CalibrateActivity extends Activity implements ThermalMonitor.Listen
             for (ThermalMonitor.Sample s : samples) {
                 if (w != null) w.println(String.format(Locale.US, "%d,%.3f,%s,%s,%d,%.4f", epochMs, t, label, s.name, s.type, s.celsius));
                 if (s.name.equals("headroom_api") || s.name.equals("bcl-virt-monitor")) continue;
-                List<double[]> pts = data.computeIfAbsent(s.name, k -> new FeverAnalysis.Series(k, s.type)).points;
-                pts.add(new double[]{t, s.celsius});
-                if (p == Phase.INTRO) while (!pts.isEmpty() && t - pts.get(0)[0] > BUFFER_S) pts.remove(0);
+                data.computeIfAbsent(s.name, k -> new FeverAnalysis.Series(k, s.type)).points.add(new double[]{t, s.celsius});
+            }
+            if (w != null) {
+                w.println(String.format(Locale.US, "%d,%.3f,%s,_still,0,%d", epochMs, t, label, monitor.stillNow() ? 1 : 0));
+                w.println(String.format(Locale.US, "%d,%.3f,%s,_gyro,0,%.4f", epochMs, t, label, monitor.gyroNow()));
             }
         }
     }
@@ -265,13 +293,31 @@ public class CalibrateActivity extends Activity implements ThermalMonitor.Listen
         lastRemaining = Integer.MAX_VALUE;
         rawFile = new File(Store.dir(this), "calib_" + runId + ".csv");
         synchronized (data) {
-            try {   // the buffered minute before Start is the drift baseline, so it goes in the file too
+            // The untouched baseline: the monitor's readings from before Start (it runs whenever an Apollo
+            // screen is open, home included), so a quick Start still has one.
+            data.clear();
+            stillLog.clear();
+            for (Object[] h : monitor.recentSince(runId - BUFFER_S * 1000L)) {
+                double t = ((Long) h[0] - openMs) / 1000.0;
+                stillLog.add(new double[]{t, (Boolean) h[2] ? 1 : 0, (Double) h[3]});
+                @SuppressWarnings("unchecked") List<ThermalMonitor.Sample> got = (List<ThermalMonitor.Sample>) h[1];
+                for (ThermalMonitor.Sample s : got) {
+                    if (s.name.equals("headroom_api") || s.name.equals("bcl-virt-monitor")) continue;
+                    data.computeIfAbsent(s.name, k -> new FeverAnalysis.Series(k, s.type)).points.add(new double[]{t, s.celsius});
+                }
+            }
+            try {   // the baseline goes in the file too
                 PrintWriter w = new PrintWriter(new FileWriter(rawFile), true);
                 w.println("epoch_ms,t_s,phase,sensor,type,celsius");
                 for (FeverAnalysis.Series s : data.values()) {
                     for (double[] p : s.points) {
                         w.println(String.format(Locale.US, "%d,%.3f,before,%s,%d,%.4f", openMs + Math.round(p[0] * 1000), p[0], s.name, s.type, p[1]));
                     }
+                }
+                for (double[] q : stillLog) {   // lying still (1/0) and the gyroscope behind it, for offline checks
+                    long ms = openMs + Math.round(q[0] * 1000);
+                    w.println(String.format(Locale.US, "%d,%.3f,before,_still,0,%.0f", ms, q[0], q[1]));
+                    w.println(String.format(Locale.US, "%d,%.3f,before,_gyro,0,%.4f", ms, q[0], q[2]));
                 }
                 raw = w;
             } catch (IOException e) {
@@ -288,13 +334,25 @@ public class CalibrateActivity extends Activity implements ThermalMonitor.Listen
         blocker.setOnTouchListener((v, e) -> true);
         LinearLayout col = Ui.column(this);
         col.setGravity(Gravity.CENTER);
-        phaseText = Ui.add(col, Ui.text(this, "", 20, Ui.MUTED, true), 0);
+        // The "hold still" screen from the design boards, kept pure black: black pixels are off on this
+        // display, so it adds the least heat to the measurement.
+        col.setPadding(Ui.dp(this, 28), 0, Ui.dp(this, 28), 0);
+        View face = Ui.mascot(this, "calm", 64);
+        ((LinearLayout.LayoutParams) face.getLayoutParams()).gravity = Gravity.CENTER_HORIZONTAL;
+        col.addView(face);
+        stepLabel = Ui.add(col, Ui.styled(this, "", 12, 0x99FFFFFF, 700), 18);
+        stepLabel.setLetterSpacing(0.14f);
+        stepLabel.setGravity(Gravity.CENTER);
+        phaseText = Ui.add(col, Ui.styled(this, "", 26, 0xFFFFFFFF, 700), 8);
         phaseText.setGravity(Gravity.CENTER);
-        countdown = Ui.add(col, Ui.text(this, "", 72, Ui.TEMP, true), 8);
-        countdown.setGravity(Gravity.CENTER);
-        nextText = Ui.add(col, Ui.text(this, "", 15, Ui.MUTED, false), 8);
+        countdown = new RingView(this, true);
+        LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        rl.gravity = Gravity.CENTER_HORIZONTAL;
+        rl.topMargin = Ui.dp(this, 28);
+        col.addView(countdown, rl);
+        nextText = Ui.add(col, Ui.styled(this, "", 15, 0xB3FFFFFF, 400), 28);
         nextText.setGravity(Gravity.CENTER);
-        TextView hint = Ui.add(col, Ui.text(this, "Back button cancels", 13, Ui.MUTED, false), 24);
+        TextView hint = Ui.add(col, Ui.styled(this, "Touch is locked  ·  Back cancels", 13, 0x73FFFFFF, 400), 22);
         hint.setGravity(Gravity.CENTER);
         blocker.addView(col, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT, Gravity.CENTER));
@@ -304,8 +362,9 @@ public class CalibrateActivity extends Activity implements ThermalMonitor.Listen
         statusText = null;
 
         phase = Phase.WAIT;
-        speaker.say("table".equals(site) ? "Get your forehead over the phone. Rest it on the screen at the buzz."
-                : "Pick up the phone by its edges. Press it on your " + (onArm() ? "arm" : "forehead") + " at the buzz.");
+        speaker.say("none".equals(contact) ? "Don't touch the phone. Recording starts at the buzz."
+                : "hand".equals(contact) ? "Pick up the phone by its edges. At the buzz, hold it in the air, screen facing away from you."
+                : "Pick up the phone by its edges. Press it on your forehead at the buzz.");
     }
 
     private void onTick() {
@@ -316,9 +375,11 @@ public class CalibrateActivity extends Activity implements ThermalMonitor.Listen
         double t = (System.currentTimeMillis() - openMs) / 1000.0;
         if (phase == Phase.WAIT) {
             int left = (int) Math.ceil(startT + WAIT_S - t);
-            phaseText.setText("Get ready");
-            nextText.setText("At the buzz, press the screen on your " + (onArm() ? "inner forearm" : "forehead") + ".");
-            countdown.setText(String.valueOf(Math.max(0, left)));
+            stepLabel.setText("GET READY");
+            phaseText.setText("none".equals(contact) ? "Leave it on the table." : "Pick the phone up by its edges.");
+            nextText.setText("none".equals(contact) ? "Recording starts at the buzz." : "hand".equals(contact)
+                    ? "At the buzz, hold it in the air, screen facing away from you." : "At the buzz, press the screen on your forehead.");
+            countdown.setTime(startT + WAIT_S - t, WAIT_S, "until the buzz");
             if (left != lastRemaining && left >= 1 && left <= 3) speaker.say(new String[]{"one", "two", "three"}[left - 1]);
             lastRemaining = left;
             if (t >= startT + WAIT_S) {
@@ -326,13 +387,16 @@ public class CalibrateActivity extends Activity implements ThermalMonitor.Listen
                 phase = Phase.CONTACT;
                 lastRemaining = Integer.MAX_VALUE;
                 speaker.buzz();
-                speaker.say("Press now, flat and firm. Hold still for ninety seconds.");
+                speaker.say("none".equals(contact) ? "Recording. Leave the phone alone for ninety seconds."
+                        : "hand".equals(contact) ? "Now hold it still in the air, screen away from you, for ninety seconds."
+                        : "Press now, flat and firm. Hold still for ninety seconds.");
             }
         } else if (phase == Phase.CONTACT) {
             int left = (int) Math.ceil(contactT + CONTACT_S - t);
-            phaseText.setText("Hold still");
-            nextText.setText("A buzz and \"Done\" mean you can lift the phone.");
-            countdown.setText(String.valueOf(Math.max(0, left)));
+            stepLabel.setText("none".equals(contact) ? "PHONE-ONLY CONTROL" : "hand".equals(contact) ? "HAND-ONLY CONTROL" : "FOREHEAD CALIBRATION");
+            phaseText.setText("none".equals(contact) ? "Leave it be." : "Stay just like that.");
+            nextText.setText("A buzz and \"Done\" mean you can " + ("none".equals(contact) ? "pick it up." : "lift the phone."));
+            countdown.setTime(contactT + CONTACT_S - t, CONTACT_S, "of 90 seconds remaining");
             if (left != lastRemaining) {
                 lastRemaining = left;
                 String say = left == 60 ? "One minute left." : left == 30 ? "Thirty seconds." : left == 10 ? "Ten seconds."
@@ -358,7 +422,7 @@ public class CalibrateActivity extends Activity implements ThermalMonitor.Listen
             raw = null;
         }
         speaker.buzz();
-        speaker.say("Done. You can lift the phone. Now type the thermometer reading.");
+        speaker.say(control() ? "Done. You can put the phone down." : "Done. You can lift the phone. Now type the thermometer reading.");
         restoreScreen();
         LinearLayout col = Ui.column(this);
         Ui.add(col, Ui.title(this, "Analysing…"), 0);
@@ -373,11 +437,31 @@ public class CalibrateActivity extends Activity implements ThermalMonitor.Listen
             data.clear();   // the next run buffers afresh
         }
         double from = contactT, to = contactT + CONTACT_S;
-        double baselineS = copy.values().stream().mapToDouble(s -> s.points.isEmpty() ? from : from - s.points.get(0)[0]).max().orElse(0);
+        // Drift only from time the phone lay still before Start (gyroscope), never from handling it.
+        double[] st = new double[stillLog.size()];
+        boolean[] sf = new boolean[stillLog.size()];
+        for (int i = 0; i < st.length; i++) {
+            st[i] = stillLog.get(i)[0];
+            sf[i] = stillLog.get(i)[1] > 0.5;
+        }
+        double[] base = Steadiness.baseline(st, sf, startT);
+        double driftFrom = base[0], driftTo = base[1];
+        double baselineS = Double.isNaN(driftFrom) ? 0 : driftTo - driftFrom;
         new Thread(() -> {
-            FeverAnalysis.Report rep = FeverAnalysis.analyze(copy, from, to);
+            FeverAnalysis.Report rep = FeverAnalysis.analyze(copy, from, to, driftFrom, driftTo);
             ui.post(() -> showReport(rep, copy, baselineS));
         }).start();
+    }
+
+    /**
+     * While the phone gets ready, keep the screen on (a screen-off pause would stop the readings) and at the
+     * test's 20% brightness, so the baseline drift is measured with the same screen heat as the test itself.
+     */
+    private void holdForBaseline() {
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        WindowManager.LayoutParams lp = getWindow().getAttributes();
+        lp.screenBrightness = 0.2f;
+        getWindow().setAttributes(lp);
     }
 
     private void restoreScreen() {
@@ -394,7 +478,7 @@ public class CalibrateActivity extends Activity implements ThermalMonitor.Listen
         String calKey = key(startState.powerMode);
         LinearLayout col = Ui.column(this);
         Ui.add(col, Ui.homeLink(this), 0);
-        Ui.add(col, Ui.label(this, "Calibration run · " + siteName()), 4);
+        Ui.add(col, Ui.label(this, contactName()), 4);
         if (rep.best == null) {
             Ui.add(col, Ui.title(this, "No thermistor data"), 6);
             Ui.add(col, Ui.text(this, "The phone didn't report thermistor readings. One-time setup from a computer: "
@@ -404,41 +488,87 @@ public class CalibrateActivity extends Activity implements ThermalMonitor.Listen
             return;
         }
         FeverAnalysis.SensorResult b = rep.best;
-        Ui.add(col, Ui.title(this, String.format(Locale.US, "%+.2f °C/min", b.correctedCPerMin)), 6);
-        Ui.add(col, Ui.text(this, String.format(Locale.US, "How fast your skin warmed the phone (%s, which started at %.2f °C). "
-                + "Type the thermometer reading to turn this into k.", b.name, b.startC), 14, Ui.MUTED, false), 2);
-        if (anyway) Ui.add(col, Ui.badge(this, "The phone wasn't steady at the start: this run may be off", Ui.WARN), 10);
-        if (baselineS < 30) {
-            Ui.add(col, Ui.badge(this, String.format(Locale.US, "Only %.0f s of baseline before contact: open this screen "
-                    + "a minute before Start next time", baselineS), Ui.WARN), 10);
+        double shown = b.correctedCPerMin;
+        if (control()) {   // a control's "cleanest" sensor means nothing: show the front sensors the estimate uses
+            double sum = 0;
+            int n = 0;
+            for (FeverAnalysis.SensorResult r : rep.sensors) {
+                if (FeverAnalysis.PREFERRED.contains(r.name) && !Double.isNaN(r.correctedCPerMin)) {
+                    sum += r.correctedCPerMin;
+                    n++;
+                }
+            }
+            if (n > 0) shown = sum / n;
+        }
+        Ui.add(col, Ui.title(this, String.format(Locale.US, "%+.2f °C/min", shown)), 6);
+        Ui.add(col, Ui.text(this, control()
+                ? "How fast the phone warmed without your forehead (front sensors). Save it so the analysis can separate your "
+                + "hand's and the phone's own heat from your forehead's."
+                : String.format(Locale.US, "How fast your forehead warmed the phone (%s, which started at %.2f °C). Type the "
+                + "thermometer reading to turn this into k.", b.name, b.startC), 14, Ui.MUTED, false), 2);
+        if (anyway) Ui.wrap(col, Ui.badge(this, "The phone wasn't steady at the start: this run may be off", Ui.WARN), 10);
+        if (baselineS < Steadiness.MIN_BASELINE_S) {
+            Ui.wrap(col, Ui.badge(this, "The phone wasn't lying still for 20 s before Start, so its own drift isn't known and "
+                    + "this run is less accurate. Next time leave it flat until it says ready.", Ui.WARN), 10);
         }
 
+        if (control()) controlCard(col, rep, baselineS);
+        else calibrationCard(col, rep, calKey);
+
+        chartAndDetails(col, rep, series);
+    }
+
+    /** A control run: saved for the analysis, never used for k. */
+    private void controlCard(LinearLayout col, FeverAnalysis.Report rep, double baselineS) {
+        LinearLayout card = Ui.add(col, Ui.card(this), 16);
+        Ui.add(card, Ui.label(this, "Save this control run"), 0);
+        EditText who = Ui.add(card, Ui.textInput(this, "Whose hand (name or initials)"), 10);
+        who.setText(Store.prefs(this).getString("calib_person", ""));
+        TextView out = Ui.text(this, "", 14, Ui.TEXT, false);
+        boolean[] saved = {false};
+        Ui.add(card, Ui.button(this, "Save", Ui.TEMP, true, v -> {
+            if (saved[0]) return;
+            saved[0] = true;
+            person = who.getText().toString().trim();
+            Store.prefs(this).edit().putString("calib_person", person).apply();
+            try {
+                JSONObject o = new JSONObject();
+                o.put("id", runId);
+                o.put("type", "control");
+                o.put("contact", contact);
+                if (!person.isEmpty()) o.put("person", person);
+                o.put("power_mode", startState.powerMode);
+                o.put("unreliable", anyway);
+                o.put("baseline_s", Math.round(baselineS));
+                o.put("sensors", sensorsJson(rep, Double.NaN));
+                o.put("raw_file", rawFile.getName());
+                o.put("method", "feverphone.control." + contact + ".v1");
+                Store.save(this, o);
+                out.setText("Saved. It isn't used as a calibration; the analysis uses it to separate the heat sources.");
+            } catch (JSONException e) {
+                out.setText("Couldn't save: " + e.getMessage());
+            }
+        }), 10);
+        Ui.add(card, out, 10);
+    }
+
+    private void calibrationCard(LinearLayout col, FeverAnalysis.Report rep, String calKey) {
         LinearLayout cal = Ui.add(col, Ui.card(this), 16);
         Ui.add(cal, Ui.label(this, "Thermometer reading"), 0);
         // Most thermometers show body temperature; a body reading is turned into the forehead skin
         // temperature that the skin-to-core model maps back onto it (SkinToCore.skinFor).
         boolean[] body = {!"skin".equals(Store.prefs(this).getString("calib_ref_kind", "body"))};
-        LinearLayout kind = Ui.add(cal, Ui.row(this), 8);
-        TextView[] kinds = new TextView[2];
-        Runnable paint = () -> {
-            for (int i = 0; i < 2; i++) {
-                boolean on = (i == 0) == body[0];
-                kinds[i].setTextColor(on ? Ui.BG : Ui.TEMP);
-                kinds[i].setBackground(Ui.rounded(on ? Ui.TEMP : Ui.CARD_2, Ui.dp(this, 10)));
-            }
+        LinearLayout kind = Ui.add(cal, Ui.column(this), 10);
+        Runnable[] paint = new Runnable[1];
+        paint[0] = () -> {
+            kind.removeAllViews();
+            kind.addView(Ui.segmented(this, new String[]{"Body temp (~37)", "Skin / surface"}, body[0] ? 0 : 1, i -> {
+                body[0] = i == 0;
+                Store.prefs(this).edit().putString("calib_ref_kind", body[0] ? "body" : "skin").apply();
+                paint[0].run();
+            }));
         };
-        for (int i = 0; i < 2; i++) {
-            final boolean isBody = i == 0;
-            kinds[i] = Ui.button(this, isBody ? "Body temp (~37)" : "Skin / surface", Ui.TEMP, false, v -> {
-                body[0] = isBody;
-                Store.prefs(this).edit().putString("calib_ref_kind", isBody ? "body" : "skin").apply();
-                paint.run();
-            });
-            LinearLayout.LayoutParams kp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
-            if (i == 1) kp.leftMargin = Ui.dp(this, 8);
-            kind.addView(kinds[i], kp);
-        }
-        paint.run();
+        paint[0].run();
         EditText who = Ui.add(cal, Ui.textInput(this, "Your name or initials (optional)"), 10);
         who.setText(Store.prefs(this).getString("calib_person", ""));
         LinearLayout row = Ui.add(cal, Ui.row(this), 8);
@@ -469,10 +599,12 @@ public class CalibrateActivity extends Activity implements ThermalMonitor.Listen
             out.setText(save(rep, body[0] ? SkinToCore.skinFor(ref) : ref, body[0] ? ref : Double.NaN, calKey));
         }), lp);
         Ui.add(cal, out, 10);
+    }
 
+    private void chartAndDetails(LinearLayout col, FeverAnalysis.Report rep, Map<String, FeverAnalysis.Series> series) {
         ChartView chart = new ChartView(this, 200).title("Thermistors, change since contact", "°C").minSpan(1);
         double origin = contactT;
-        chart.band(0, CONTACT_S, 0x26F2A33A, onArm() ? "arm" : "forehead");
+        chart.band(0, CONTACT_S, 0x1FE8705E, "hand".equals(contact) ? "in the air" : "none".equals(contact) ? "on the table" : "forehead");
         int[] colors = {Ui.TEMP, Ui.ACCENT, Ui.STEPS};
         for (int i = 0; i < Math.min(3, rep.sensors.size()); i++) {
             FeverAnalysis.Series s = series.get(rep.sensors.get(i).name);
@@ -551,21 +683,28 @@ public class CalibrateActivity extends Activity implements ThermalMonitor.Listen
             o.put("unreliable", anyway);
             o.put("sensors_used", used);
             if (check.sensors > 0) o.put("check_error_c", Math.round((check.skinC - refC) * 100) / 100.0);
-            JSONArray sensors = new JSONArray();
-            for (FeverAnalysis.SensorResult s : rep.sensors) {
-                if (s.coarse || Double.isNaN(s.correctedCPerMin)) continue;
-                double k = FeverAnalysis.kFromReference(s, refC);
-                JSONObject j = new JSONObject().put("name", s.name).put("start_c", Math.round(s.startC * 1000) / 1000.0)
-                        .put("rate_c_per_min", Math.round(s.correctedCPerMin * 1000) / 1000.0);
-                if (!Double.isNaN(k)) j.put("k", Math.round(k * 10000) / 10000.0);
-                sensors.put(j);
-            }
-            o.put("sensors", sensors);
+            o.put("contact", "forehead");
+            o.put("sensors", sensorsJson(rep, refC));
             o.put("raw_file", rawFile.getName());
-            o.put("method", "feverphone.calibration." + site + ".v1");
+            o.put("method", "feverphone.calibration." + site + ".v2");   // v2: drift from the lying-still baseline
             Store.save(this, o);
         } catch (JSONException ignored) {
         }
         return sb.toString();
+    }
+
+    /** Each usable sensor's start temperature, rate and drift (and k when there's a reference). */
+    private static JSONArray sensorsJson(FeverAnalysis.Report rep, double refC) throws JSONException {
+        JSONArray sensors = new JSONArray();
+        for (FeverAnalysis.SensorResult s : rep.sensors) {
+            if (s.coarse || Double.isNaN(s.correctedCPerMin)) continue;
+            JSONObject j = new JSONObject().put("name", s.name).put("start_c", Math.round(s.startC * 1000) / 1000.0)
+                    .put("rate_c_per_min", Math.round(s.correctedCPerMin * 1000) / 1000.0);
+            if (!Double.isNaN(s.driftCPerMin)) j.put("drift_c_per_min", Math.round(s.driftCPerMin * 1000) / 1000.0);
+            double k = Double.isNaN(refC) ? Double.NaN : FeverAnalysis.kFromReference(s, refC);
+            if (!Double.isNaN(k)) j.put("k", Math.round(k * 10000) / 10000.0);
+            sensors.put(j);
+        }
+        return sensors;
     }
 }

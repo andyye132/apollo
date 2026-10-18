@@ -609,6 +609,66 @@ Design choices:
 
 Use the thermometer's surface/object mode: the normal mode of a forehead IR thermometer shows an estimated body temperature (~37 °C), not skin (~33–35 °C).
 
+#### First field results (Oct 17, 2026, Pixel 4, 3 people)
+
+Three calibrations (AN, AY, MH; forehead, hand-held, body thermometer mapped to skin) and one forehead test.
+
+**The forehead test read 94.9 °F against a 98.3 °F thermometer.** Two procedure bugs caused it:
+
+1. The drift baseline included the 10 s pickup, where the hand warms the phone by up to +2.6 °C/min. That over-subtracted, until some sensors' rates went negative.
+2. The forehead test had a 60 s hand pre-hold whose heat was subtracted, while calibration kept the hand's heat in k.
+
+The phone also came out of a fridge at 24.4 °C and wasn't settled. Its in-hand warming (+0.9 °C/min) was subtracted from a 1.6 °C/min contact rise, leaving the "0.7 °C/min" shown.
+
+**Fixes:**
+- The forehead test now follows the calibration procedure exactly: untouched baseline while the screen is open → Start → 10 s pickup → 90 s contact.
+- Drift is fitted only on the untouched phone, so the hand's heat during contact stays in k.
+- The estimate uses only the two front thermistors, `pa-therm` and `chg-therm`.
+- All calibrations were recomputed (`RECALIBRATE=1 proto-app/check.sh data/apollo/results.jsonl`) and pushed to the phone.
+
+**What the data says now:**
+
+| Choice | Leave-one-person-out error (core) |
+| --- | --- |
+| `pa-therm` / `pa`+`chg`, drift fixed | 0.7–0.8 °C |
+| all four thermistors | 1.2–1.9 °C |
+| old drift window | 1.0–1.6 °C |
+
+- **People differ:** k varies about 25–30% between people (AN 0.21, AY 0.13, MH 0.15 /min on `pa-therm`). That's the contact and pressure variation FeverPhone corrects with touchscreen contact area, which stock Android doesn't expose.
+- **Not enough data for a fitted model:** three people can't support a regression beyond this. Per-person k only had one old-procedure test to check against (−0.85 °C), which is inconclusive.
+- **Next data:** at least 3 runs per person with the fixed procedure (within-person repeatability), the table protocol vs hand-held (does it shrink the 25–30%?), and runs at normal room-settled start temperatures (never a fridge). Each run's in-app "check" line reports its out-of-sample error.
+
+**Table protocol dropped (Oct 17).** One run had the forehead resting on the phone lying on a table. It rose only 0.44 °C/min, because no hand warmed the phone and the table drew heat from its back. The phone was also drifting +0.4 °C/min on its own, so the forehead's share was unmeasurable. The app is now hand-held only.
+
+Other changes:
+- The drift baseline now comes from the thermal monitor's 2-minute history, so a quick Start still has one.
+- The report leads with the body temperature in °C and °F, or "--" with the reason: no baseline, the phone drifting by itself, or not calibrated.
+- Plugged in at 100% shares the unplugged calibration.
+
+#### Calibration session protocol (Oct 17, 2026)
+
+**Why:** four hand-held runs suggest the warming has a part that doesn't depend on the forehead (the hand, plus the phone's own screen/voice/CPU heat): warming ≈ k·(skin − phone) + c. Fitting two of AN's runs gave k ≈ 0.10/min and c ≈ +0.8 °C/min, against c ≈ +0.2 for AY and MH. A single k absorbed c, which is why k "jumped" (0.21 → 0.32 for the same person). That's a hypothesis from four runs; the controls below test it.
+
+**App support (installed):**
+- **Readiness from live readings:** lying still 60 s (gyroscope median < 0.015 rad/s), front and reference thermistors flat (≤ 0.1 °C/min), ≤ 30 °C, and not charging. This replaces the fixed 10-minute timers.
+- **Baseline:** the drift comes only from time the phone lay still before Start. Raw files log `_still` and `_gyro` rows.
+- **Matched screen heat:** intro screens stay on at the test's 20% brightness, so the baseline sees the same screen heat as the test.
+- **Run types** (Calibrate screen): Forehead (calibration), Hand only (control: same grip, held in the air, screen facing away), Phone only (control: untouched on the table). Controls are saved as `type: control` and never used for k.
+- **Forehead report:** always gives a number once calibrated, labelled "Unreliable: …" when conditions weren't met.
+
+**Procedure:**
+- **Before each run:** unplugged, out of case, phone ≤ 30 °C, lying flat until "Ready", and a body-mode thermometer reading right before Start. Put your name on every run.
+- **Per person:** forehead → hand only → forehead, with about 10 minutes of settling between runs. Add one phone-only run per session.
+
+**Analysis:** `python3 tools/fever_models.py data/apollo/results.jsonl` compares, each run predicted from the others:
+- "always the average"
+- k
+- k + c
+- a FeverPhone-style formula (rate + start temperature, no k)
+- rate alone
+
+With healthy people all near 36.8 °C, "average" wins by default. Showing that a model tracks temperature needs runs spanning more than 1 °C, for example a warm water bag measured with a probe thermometer.
+
 #### Skin to core
 
 The phone measures skin temperature. A fever reading needs core temperature, and the mapping is weak at the forehead.

@@ -20,6 +20,7 @@ public class Check {
             String name = new java.io.File(a).getName();
             if (name.contains("forehead") || name.startsWith("calib_")) fever(a);
             else if (name.startsWith("watch_")) watch(a);
+            else if (name.equals("results.jsonl") && System.getenv("RECALIBRATE") != null) recalibrate(a);
             else if (name.equals("results.jsonl")) replay(a);
             else ppg(a);
         }
@@ -119,6 +120,77 @@ public class Check {
         return m.find() ? m.group(1) : null;
     }
 
+    /**
+     * Recomputes every saved calibration run's k with the current analysis (drift from the untouched phone
+     * before Start) and writes calibration_import.json next to results.jsonl, ready to adb push to the app.
+     */
+    static void recalibrate(String path) throws IOException {
+        java.io.File dir = new java.io.File(path).getParentFile();
+        Map<String, Map<String, List<Double>>> byKey = new LinkedHashMap<>();
+        for (String line : java.nio.file.Files.readAllLines(new java.io.File(path).toPath())) {
+            if (!line.contains("\"calibration\"") || (field(line, "contact") != null && !"forehead".equals(field(line, "contact")))) continue;
+            String rawName = field(line, "raw_file"), who = field(line, "person");
+            double ref = Double.parseDouble(field(line, "ref_c"));
+            // Runs saved before the body/skin choice existed hold a body reading as "skin" (forehead skin doesn't reach 35.5 °C).
+            if (field(line, "body_c") == null && ref > 35.5) ref = SkinToCore.skinFor(ref);
+            String[] h = new String[8];
+            Map<String, FeverAnalysis.Series> data = new LinkedHashMap<>();
+            double contact = Double.NaN, start = Double.NaN, end = Double.NaN;
+            for (String[] r : rows(new java.io.File(dir, rawName).getPath(), h)) {
+                double t = Double.parseDouble(r[1]);
+                String phase = r[2], name = r[3];
+                if (phase.equals("wait") && (Double.isNaN(start) || t < start)) start = t;
+                if (phase.equals("contact")) {
+                    if (Double.isNaN(contact) || t < contact) contact = t;
+                    end = Double.isNaN(end) ? t : Math.max(end, t);
+                }
+                if (name.startsWith("headroom") || name.equals("bcl-virt-monitor") || name.startsWith("_")) continue;   // _still/_gyro are logs, not sensors
+                data.computeIfAbsent(name, k -> new FeverAnalysis.Series(k, Integer.parseInt(r[4]))).points.add(new double[]{t, Double.parseDouble(r[5])});
+            }
+            if (Double.isNaN(start)) start = contact - 10;
+            double[] base = {start - 41, start - 1};   // older runs: the untouched minute before Start
+            List<double[]> stillRows = new ArrayList<>();
+            for (String[] r : rows(new java.io.File(dir, rawName).getPath(), h)) {
+                if (r[3].equals("_still") && r[2].equals("before")) stillRows.add(new double[]{Double.parseDouble(r[1]), Double.parseDouble(r[5])});
+            }
+            if (!stillRows.isEmpty()) {   // newer runs: only time the phone lay still (as the app does)
+                double[] st = new double[stillRows.size()];
+                boolean[] sf = new boolean[stillRows.size()];
+                for (int i = 0; i < st.length; i++) {
+                    st[i] = stillRows.get(i)[0];
+                    sf[i] = stillRows.get(i)[1] > 0.5;
+                }
+                base = Steadiness.baseline(st, sf, start);
+            }
+            FeverAnalysis.Report rep = FeverAnalysis.analyze(data, contact, Math.min(end, contact + 90), base[0], base[1]);
+            String key = field(line, "power_mode") + "|" + field(line, "site");
+            System.out.printf(Locale.US, "%s (%s) skin ref %.2f, untouched baseline %.0f s:", rawName, who == null ? "?" : who, ref,
+                    start - 1 - data.values().iterator().next().points.get(0)[0]);
+            for (FeverAnalysis.SensorResult sr : rep.sensors) {
+                double k = FeverAnalysis.kFromReference(sr, ref);
+                if (Double.isNaN(k)) continue;
+                byKey.computeIfAbsent(key, x -> new LinkedHashMap<>()).computeIfAbsent(sr.name, x -> new ArrayList<>()).add(Math.round(k * 10000) / 10000.0);
+                if (FeverAnalysis.PREFERRED.contains(sr.name)) {
+                    System.out.printf(Locale.US, "  %s k %.3f (drift %+.2f, rate %+.2f, T0 %.2f)", sr.name, k, sr.driftCPerMin, sr.correctedCPerMin, sr.startC);
+                }
+            }
+            System.out.println();
+        }
+        StringBuilder json = new StringBuilder("{");
+        for (Map.Entry<String, Map<String, List<Double>>> e : byKey.entrySet()) {
+            if (json.length() > 1) json.append(",");
+            json.append("\"").append(e.getKey()).append("\":{");
+            int i = 0;
+            for (Map.Entry<String, List<Double>> s : e.getValue().entrySet()) {
+                json.append(i++ > 0 ? "," : "").append("\"").append(s.getKey()).append("\":").append(s.getValue());
+            }
+            json.append("}");
+        }
+        json.append("}");
+        java.nio.file.Files.write(new java.io.File(dir, "calibration_import.json").toPath(), json.toString().getBytes("UTF-8"));
+        System.out.println("wrote " + new java.io.File(dir, "calibration_import.json") + ": " + json);
+    }
+
     /** Re-runs every saved heart-rate test on the exact window its report used, next to the watch. */
     static void replay(String path) throws IOException {
         java.io.File dir = new java.io.File(path).getParentFile();
@@ -216,7 +288,7 @@ public class Check {
         for (String[] r : rows) {
             double t = Double.parseDouble(r[o]);
             String phase = r[o + 1], name = r[o + 2];
-            if (name.startsWith("headroom") || name.equals("bcl-virt-monitor")) continue;
+            if (name.startsWith("headroom") || name.equals("bcl-virt-monitor") || name.startsWith("_")) continue;   // _still/_gyro are logs, not sensors
             if (phase.equals("forehead") || phase.equals("contact")) {   // forehead test / calibration screen
                 if (Double.isNaN(contactStart) || t < contactStart) contactStart = t;
                 if (Double.isNaN(contactEnd) || t > contactEnd) contactEnd = t;

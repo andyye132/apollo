@@ -29,6 +29,7 @@ public class CoreCheck {
         skinToCore();
         exposure();
         jolt();
+        steadiness();
         System.out.println(failures == 0 ? "all core checks passed" : failures + " core check(s) FAILED");
         if (failures > 0) System.exit(1);
     }
@@ -226,6 +227,37 @@ public class CoreCheck {
         check(!fired, "a small adjustment (0.6 rad/s, 1.2 m/s², +6% brightness) does not restart");
     }
 
+    /** The latest hand-held run's shape: still on the table, handled ~35 s before Start (tapping through the app). */
+    static void steadiness() {
+        System.out.println("Steadiness (readiness and the drift baseline)");
+        int n = 121;
+        double[] t = new double[n];
+        boolean[] still = new boolean[n];
+        for (int i = 0; i < n; i++) {
+            t[i] = -120 + i;
+            double gyro = t[i] < -35 ? 0.002 : t[i] < -2 ? 0.07 : 0.003;   // handled from -35 s, put down at -2 s
+            if (t[i] == -60) gyro = 0.05;   // a tap while it lies on the table
+            still[i] = Steadiness.still(gyro);
+        }
+        double[] b = Steadiness.baseline(t, still, 0);
+        check(Double.isNaN(b[0]), "2 s of stillness right before Start isn't a baseline (" + b[0] + ")");
+        double[] w = Steadiness.lastStill(t, still, -36);
+        check(w[0] == -120 && w[1] == -36, String.format(Locale.US, "a tap doesn't break a still stretch (%.0f..%.0f s)", w[0], w[1]));
+        boolean[] calm = new boolean[n];
+        java.util.Arrays.fill(calm, true);
+        double[] b2 = Steadiness.baseline(t, calm, 0);
+        check(Math.abs(b2[0] + 40) < 1e-9 && Math.abs(b2[1] - 0.5) < 1e-9, "a phone left alone gets the last 40 s as its baseline");
+        check(Steadiness.stillFor(t, calm) == 120 && Steadiness.stillFor(t, still) == 2, "still-for counts only the current stretch (put down 2 s ago)");
+        double[][] flat = new double[2][n], warming = new double[2][n];
+        for (int i = 0; i < n; i++) {
+            flat[0][i] = warming[0][i] = t[i];
+            flat[1][i] = 28 + 0.05 * t[i] / 60;
+            warming[1][i] = 28 + 0.4 * t[i] / 60;
+        }
+        double d = Steadiness.maxDrift(java.util.Arrays.asList(flat, warming), -60, 0);
+        check(Math.abs(d - 0.4) < 0.01, String.format(Locale.US, "readiness looks at the worst sensor (%.2f °C/min)", d));
+    }
+
     /** Must match tools/skin_to_core.py's fit (values printed by that script). */
     static void skinToCore() {
         System.out.println("SkinToCore (FDA forehead -> oral model)");
@@ -263,5 +295,24 @@ public class CoreCheck {
             worst = Math.max(worst, Math.abs(e.skinC - skin));
         }
         check(worst < 0.3, String.format(Locale.US, "recovers skin temperature within 0.3 °C after calibration (worst %.2f)", worst));
+        // The Oct 17 table run: phone warming +0.4 °C/min on its own, contact +0.44 °C/min -> no number.
+        Map<String, FeverAnalysis.Series> d = new LinkedHashMap<>();
+        for (String name : new String[]{"pa-therm", "chg-therm"}) {
+            FeverAnalysis.Series s = new FeverAnalysis.Series(name, 3);
+            for (double tt = -60; tt <= 100; tt += 1) s.points.add(new double[]{tt, 29.3 + 0.4 * tt / 60 + 0.004 * rng.nextGaussian()});
+            d.put(name, s);
+        }
+        double[] dr = FeverAnalysis.drift(FeverAnalysis.analyze(d, 10, 100, -41, -1));
+        check(FeverAnalysis.drifting(dr), String.format(Locale.US, "a phone warming on its own (+%.2f °C/min) gives no number", dr[0]));
+        Map<String, FeverAnalysis.Series> d2 = new LinkedHashMap<>();
+        for (String name : new String[]{"pa-therm", "chg-therm"}) {
+            FeverAnalysis.Series s = new FeverAnalysis.Series(name, 3);
+            for (double tt = -3; tt <= 100; tt += 1) s.points.add(new double[]{tt, 29.3 + (tt > 10 ? 0.8 * (tt - 10) / 60 : 0)});
+            d2.put(name, s);
+        }
+        double[] dr2 = FeverAnalysis.drift(FeverAnalysis.analyze(d2, 10, 100, -41, -1));
+        check(Double.isNaN(dr2[0]), "3 s of baseline counts as no baseline (no number), not as a drift");
+        FeverAnalysis.Report ok = run(36.5, 29, 0.02, rng);
+        check(!FeverAnalysis.drifting(FeverAnalysis.drift(ok)), "a settled phone (+0.02 °C/min) passes the drift check");
     }
 }

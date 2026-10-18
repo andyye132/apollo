@@ -72,18 +72,29 @@ final class FeverAnalysis {
     static final double LAG_S = 10;
 
     static Report analyze(Map<String, Series> data, double contactStartS, double contactEndS) {
+        return analyze(data, contactStartS, contactEndS, contactStartS - 40, contactStartS);
+    }
+
+    /**
+     * Drift is fitted over [driftFromS, driftToS): for the calibration-style procedure that's the phone
+     * lying untouched before Start, NOT the 10 s pickup, whose hand heat (up to +2.6 °C/min on the Pixel 4)
+     * made the old 40 s window over-subtract until some sensors' rates came out negative (Oct 2026).
+     * The hand's heat during contact then stays in the rate, in calibration and measurement alike, so k carries it.
+     */
+    static Report analyze(Map<String, Series> data, double contactStartS, double contactEndS, double driftFromS, double driftToS) {
         Report rep = new Report();
         rep.contactStartS = contactStartS;
         rep.contactEndS = contactEndS;
         for (Series s : data.values()) {
-            double[][] pre = s.window(contactStartS - 40, contactStartS);
+            double[][] pre = s.window(driftFromS, driftToS);
             double[][] on = s.window(contactStartS + LAG_S, contactEndS);
             double[][] atContact = s.window(contactStartS - 3, contactStartS + 0.5);
             if (on[0].length < 10) continue;
             SensorResult r = new SensorResult();
             r.name = s.name;
             r.type = s.type;
-            double[] drift = Dsp.lineFit(pre[0], pre[1]);
+            // A drift needs a real baseline: 3 s of readings gave a meaningless slope (Oct 2026).
+            double[] drift = pre[0].length >= 15 ? Dsp.lineFit(pre[0], pre[1]) : new double[]{Double.NaN, Double.NaN, Double.NaN};
             double[] contact = Dsp.lineFit(on[0], on[1]);
             r.driftCPerMin = drift[0] * 60;
             r.slopeCPerMin = contact[0] * 60;
@@ -100,6 +111,29 @@ final class FeverAnalysis {
         Collections.sort(rep.sensors);
         if (!rep.sensors.isEmpty()) rep.best = rep.sensors.get(0);
         return rep;
+    }
+
+    /** A drift faster than this (°C/min), or than 40% of the contact rise, swamps the forehead's warming. */
+    static final double DRIFT_LIMIT = 0.25;
+
+    /** The phone's own drift on the sensors the estimate uses: {drift, contact slope}; drift NaN when there was no baseline. */
+    static double[] drift(Report rep) {
+        double drift = Double.NaN, contact = Double.NaN;
+        boolean anyPreferred = false;
+        for (SensorResult r : rep.sensors) anyPreferred |= PREFERRED.contains(r.name);
+        for (SensorResult r : rep.sensors) {
+            boolean use = anyPreferred ? PREFERRED.contains(r.name) : r == rep.best;
+            if (!use || Double.isNaN(r.driftCPerMin)) continue;
+            if (Double.isNaN(drift) || Math.abs(r.driftCPerMin) > Math.abs(drift)) {
+                drift = r.driftCPerMin;
+                contact = r.slopeCPerMin;
+            }
+        }
+        return new double[]{drift, contact};
+    }
+
+    static boolean drifting(double[] d) {
+        return !Double.isNaN(d[0]) && (Math.abs(d[0]) > DRIFT_LIMIT || Math.abs(d[0]) > 0.4 * Math.abs(d[1]));
     }
 
     // ---- Calibration and the physics estimate ------------------------------------------------------
@@ -121,10 +155,21 @@ final class FeverAnalysis {
      * Skin temperature from each calibrated sensor, T0 + slope / k, combined by median; spread = SD
      * across sensors. `kBySensor` holds each sensor's calibrated k (median of its calibration runs).
      */
+    /**
+     * Thermistors trusted for the estimate when present. On three people's Pixel 4 calibrations (Oct 2026),
+     * these two front sensors predicted each other's temperatures best (leave-one-person-out ~0.8 °C); adding
+     * sdm-therm-monitor and quiet-therm, deeper in the phone and slower, roughly doubled the error. Other
+     * phones, without these names, use every calibrated sensor.
+     */
+    static final java.util.Set<String> PREFERRED = new java.util.HashSet<>(java.util.Arrays.asList("pa-therm", "chg-therm"));
+
     static Estimate estimate(Report rep, Map<String, Double> kBySensor) {
         Estimate e = new Estimate();
         List<Double> vals = new ArrayList<>();
+        boolean preferredOnly = false;
+        for (SensorResult s : rep.sensors) preferredOnly |= PREFERRED.contains(s.name) && kBySensor.containsKey(s.name);
         for (SensorResult s : rep.sensors) {
+            if (preferredOnly && !PREFERRED.contains(s.name)) continue;
             Double k = kBySensor.get(s.name);
             if (k == null || k <= 0 || s.coarse || Double.isNaN(s.correctedCPerMin)) continue;
             double t = s.startC + s.correctedCPerMin / k;

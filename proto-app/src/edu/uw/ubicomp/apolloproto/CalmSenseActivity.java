@@ -356,7 +356,7 @@ public class CalmSenseActivity extends Activity implements SensorEventListener {
 
         HeatMap(Context c) {
             super(c);
-            bmp.eraseColor(0xFF0B1015);
+            bmp.eraseColor(0xFFF3EEE7);   // ivory: still
             setMinimumHeight(Ui.dp(c, 150));
         }
 
@@ -366,8 +366,9 @@ public class CalmSenseActivity extends Activity implements SensorEventListener {
             scale = Math.max(scale * 0.995f, max);   // slowly adapting brightness
             for (int b = 0; b < change.length; b++) {
                 float t = (float) Math.sqrt(Math.min(1f, change[b] / scale));
-                int c = (int) (255 * t);
-                column[b] = 0xFF000000 | (Math.min(255, c / 3) << 16) | (Math.min(255, (int) (c * 0.9)) << 8) | Math.min(255, 60 + c);
+                // ivory (still) to living coral (moved)
+                int r = (int) (0xF3 + (0xE8 - 0xF3) * t), g = (int) (0xEE + (0x70 - 0xEE) * t), bl = (int) (0xE7 + (0x5E - 0xE7) * t);
+                column[b] = 0xFF000000 | (r << 16) | (g << 8) | bl;
             }
             bmp.setPixels(column, 0, 1, x, 0, 1, Sonar.BINS);
             x = (x + 1) % bmp.getWidth();

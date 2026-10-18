@@ -13,7 +13,7 @@ rm -rf build && mkdir -p build/classes build/dex
 javac --release 11 -nowarn -cp "$JAR" -d build/classes $(find src -name '*.java')
 "$BT/d8" --release --min-api 30 --lib "$JAR" --output build/dex $(find build/classes -name '*.class')
 "$BT/aapt2" compile --dir res -o build/res.zip   # launcher icon and colours
-"$BT/aapt2" link --manifest AndroidManifest.xml -I "$JAR" -o build/unsigned.apk build/res.zip
+"$BT/aapt2" link --manifest AndroidManifest.xml -I "$JAR" -o build/unsigned.apk -A assets build/res.zip   # assets: the Inter font
 (cd build/dex && zip -q -u ../unsigned.apk classes.dex)
 "$BT/zipalign" -f 4 build/unsigned.apk build/aligned.apk
 [ -f debug.keystore ] || keytool -genkeypair -keystore debug.keystore -storepass android -keypass android \

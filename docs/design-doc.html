@@ -230,7 +230,7 @@ Apollo is an Android app that takes health measurements with the phone's own sen
 
 - **Must work:** FeverPhone core temperature and fingertip heart rate.
 - **Comes along cheaply:** steps, floors climbed, stair steps.
-- **Stretch:** lung function from audio. Vision features (eye tracking, facial heart rate) are deferred: the architecture leaves room for them, but nobody works on them until v1 demos end to end (see Vision, below).
+- **Stretch:** lung function from audio. Vision: an eye-tracking prototype (blink rate, gaze shifts) works in the foreground on the Pixel 7, and a passive version is specified (see Vision: eye tracking, below). Facial heart rate remains deferred.
 - **Constraint: offline first, local only.** Every measurement, the history, trends and journal work with no network. Heart rate, temperature, steps and floors are stored only in the on-device database. There is no cloud database, account or sync. The one network call is the chatbot, which sends only what its tools return (see Data provenance and privacy, below).
 
 ### v1 scope
@@ -247,7 +247,7 @@ Apollo is an Android app that takes health measurements with the phone's own sen
 | HRV | Accelerometer on the belly, 30 s | EHB 2017 | v2 |
 | Absolute elevation | Barometer plus a reference pressure | Liu 2014 | v2 |
 | Lung function | Microphone during exhale or sustained "Aaah" | SpiroSmart, Saleheen | Stretch |
-| Eye tracking | Front camera in a foreground service, face landmarks | None | Deferred |
+| Eye tracking | Front camera, MediaPipe face landmarks: blink rate and gaze-shift rate; passive via a camera foreground service | None | Stretch: foreground prototype works (Pixel 7), passive version specified |
 
 ### Phones
 
@@ -339,6 +339,7 @@ apollo/
 ├── data/                 recorded sessions (CSV), used for replay and tests
 ├── docs/                 this doc
 ├── probe-app/            existing FeverProbe logger (retire once :sensing:thermal works)
+├── prototypes/eyetrack/  standalone eye-tracking prototype; becomes :sensing:vision
 └── tools/                existing adb/test scripts
 ```
 
@@ -657,23 +658,43 @@ Use bottom navigation for Today, Measure, Journal and Trends, with Settings in t
 - Show quality as a chip: "Good signal", or "Weak signal, retake". Never show a low-quality number big.
 - Judge smoothness only on release builds with R8 and a Baseline Profile, because debug Compose builds stutter.
 
-### Vision (deferred)
+### Vision: eye tracking
 
-Eye tracking (for example, flagging fast eye movement as a sign of overwhelm) and facial heart rate are realistic ideas, but not for this timeline:
+**Status (2026-10-17):**
 
-- Android only allows camera use in the background from a camera-type foreground service started while the app is visible, with the camera indicator on the whole time.
-- No paper in `Papers/` validates an eye-movement measure, so the metric itself would be our own research.
-- **The front camera is too slow for saccades.** On the Pixel 7 it maxes out at 30 fps, with no high-speed modes. Saccades last 20–200 ms, so eye-movement speed can't be measured, only blink rate and how often gaze shifts.
-- Face landmarks at a useful frame rate are a battery and heat cost. That heat would also fight FeverPhone.
+- **Foreground prototype working on the Pixel 7:** `prototypes/eyetrack/`, about 30 fps, measuring blink rate and gaze-shift rate.
+- **Passive (background) version:** specified in `prototypes/eyetrack/README.md`, not built yet.
+- **Pixel 4:** not tested yet.
 
-What we do now, so it can be added later without rework:
+The README is the implementation guide. Read it before writing vision code.
 
-- **Module:** `:sensing:vision` is reserved in the layout and not created yet.
-- **Contract:** it would plug in like any other module. A `SensorSource<FaceFrame>` and a `Measurement` (or a passive collector) go through the same `:core` interfaces, so nothing else changes.
-- **Manifest:** the camera foreground-service permission is already in the manifest.
-- **Dependencies:** MediaPipe Tasks is already in the version catalog.
+**What it measures:**
 
-Nobody starts on vision until heart rate and temperature both demo end to end. The first question to settle is the one in Open decisions: blink rate, drowsiness or eye-movement speed.
+- **Gaze:** the iris position between the eye corners (MediaPipe Face Landmarker, 478 points with irises). It's relative and uncalibrated.
+- **Blinks:** MediaPipe's eye-blink blendshapes.
+- **Gaze shifts:** the gaze moving more than 0.1 eye widths within 100 ms.
+
+**What it can't do:**
+
+- **Saccade speed:** the front camera is 30 fps at most, and a saccade lasts 20–200 ms.
+- **A screen gaze point:** there's no calibration.
+- **Overwhelm detection:** nothing in `Papers/` validates an eye-movement measure of overwhelm, so present the numbers as exploratory attention signals against the person's own baseline, not a diagnosis.
+
+**Passive mode rules** (details in the README):
+
+- **Service:** it's a camera foreground service started from a visible screen, with a persistent notification and Android's green camera dot. No reboot or background start is possible.
+- **Battery:** it runs at 15 fps and pauses with the screen off.
+- **Camera conflicts:** it yields to other camera apps and resumes afterwards.
+- **Storage:** it writes per-minute summary readings. No images are ever stored or sent.
+- **Heat:** it warms the phone, so it counts as `heatsPhone` and pauses around FeverPhone readings. This matters most on the Pixel 4, which is also the temperature phone.
+
+**Moving into the app:** `EyeMetrics` has no Android types, so it moves into `:sensing:vision` as is. The service becomes the module's passive collector, writing `Reading`s through `HealthRepository`:
+
+- `blink_rate_per_min`
+- `gaze_shift_rate_per_min`
+- face coverage, used as the quality score
+
+**Known issues:** looking down reads as half a blink, and the thresholds are untuned. The README has the fixes and a cued-recording test plan.
 
 ### Conventions
 
@@ -1093,6 +1114,15 @@ The sound of a forced exhale encodes airflow. The pipeline:
 | `VOICE_COMMUNICATION` | ❌ noise gate below about −24 dBFS | ❌ adaptive gain |
 
 Neither phone exposes automatic gain control as an effect, and Android's framework pre-processing (AEC, NS) applies only to `voice_communication`. The `MIC` expander on the Pixel 4 lives in the Qualcomm DSP and is invisible in every config file, so only a measurement shows it.
+
+#### Peak-flow attempt (2026-10-17): negative result
+
+Four people did 8 peak-flow-meter blows each (top-3 means 538, 460, 337, 283 L/min) and 3–4 blows at the Pixel 4. The phone was upright, about 1 m away, and the blow was aimed over its top edge. The tools are `tools/mictest/blow.sh` and `analyze_blow.py`; the recordings stay local in the gitignored `tools/mictest/out/`.
+
+- **Wind was the first problem.** At the short wire distance, every blow clipped. The low-frequency energy below 300 Hz is wind buffeting the phone, not sound. Above about 3 kHz the wind has died out, so the 8–20 kHz airflow hiss is unaffected by it.
+- **The hiss feature doesn't separate people.** P1–P3 read within 1.2 dB of each other despite meter readings of 337–538 L/min. Per-person spread was ±2–6 dB per blow. Leave-one-out error was about 300 L/min, which is useless.
+- **13 candidate features didn't fix it.** Between-person spread divided by within-person spread was at most 1.7. The spectral centroid ranked all four people correctly, but with between/within at 0.4, so treat it as chance (1 in 24 for a perfect 4-person ranking) and as a hypothesis only.
+- **Conclusion:** at a distance and without fixed geometry, aim and lip shape vary more than airflow does. Fixed geometry (a tube, blowing through the meter while the phone listens) would be the next test. The team chose not to add components, so peak flow is dropped. Respiratory candidates without extra hardware are breathing rate from the accelerometer (phone on the chest) or from the heart-rate test, and a sustained-vowel duration.
 
 **Gotcha:** the first run showed heavy compression on every source. It came from the laptop's audio enhancements (Windows/Realtek), not the phone. Turn enhancements off before running the test.
 
@@ -1667,7 +1697,8 @@ Each gate is a measurement against a reference device, not a code milestone. If 
 ### Open decisions
 
 - [ ] Can the agent call leave the phone? The fully on-device alternative, Gemini Nano, needs a Pixel 9 or newer and is a much smaller model
-- [ ] What should eye tracking measure: blink rate, drowsiness or attention? That sets frame rate and battery cost
+- [x] What should eye tracking measure? Blink rate and gaze-shift rate, at 15 fps when passive (`prototypes/eyetrack/README.md`)
+- [ ] Eye tracking: where does it appear in the UI, and is passive mode worth the battery and heat? Measure 30 min on both Pixels first
 - [ ] Buy and root a Pixel 6 for full-fidelity FeverPhone, or stay on the no-root route?
 - [ ] IRB: which data collection needs approval before we involve people outside the team?
 - [ ] Is the app called Apollo, after the repo?

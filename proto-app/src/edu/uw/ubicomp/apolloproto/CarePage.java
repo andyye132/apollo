@@ -649,7 +649,7 @@ final class CarePage {
         placesBox = null;
         map = null;
         spotLabel = null;
-        sos(col);   // emergencies don't wait for filters: pinned at the bottom of the screen
+        sos(col);   // emergencies don't wait for filters: first on the page, above the places near you
         if (!Net.online(a)) offline(col, "Offline · finding places needs a connection.");
         if (spot == null && !locating && located() && !notNow && !locFailed) startLocating();
         if (spot != null) {
@@ -690,48 +690,13 @@ final class CarePage {
                 host.refresh();
             }), 10);
         }
-        View room = new View(a);   // room to scroll the last card out from under the pinned emergency bar
-        Ui.add(col, room, 0).getLayoutParams().height = Ui.dp(a, 84);
     }
 
-    /**
-     * "Emergency? Call 911", pinned above the tab bar for as long as this Services page is on screen: added to the
-     * activity's root over the scrolling page, and removed when the page goes.
-     */
+    /** "Emergency? Call 911." at the top of Services, above the places near you. Named, not dialled: no call buttons. */
     private void sos(LinearLayout col) {
-        View content = a.findViewById(android.R.id.content);
-        if (!(content instanceof ViewGroup) || ((ViewGroup) content).getChildCount() == 0) return;
-        if (!(((ViewGroup) content).getChildAt(0) instanceof FrameLayout)) return;
-        FrameLayout root = (FrameLayout) ((ViewGroup) content).getChildAt(0);
-        View nav = root.getChildAt(root.getChildCount() - 1);   // Home's floating tab bar, added last
-        LinearLayout bar = Ui.row(a);
-        bar.setBackground(Ui.rounded(Ui.CORAL_TINT, Ui.dp(a, 22)));
-        bar.setPadding(Ui.dp(a, 16), Ui.dp(a, 10), Ui.dp(a, 10), Ui.dp(a, 10));
-        Ui.lift(bar, 4);
-        LinearLayout words = Ui.column(a);
-        words.addView(Ui.styled(a, "Emergency? Call 911.", 15, Ui.CORAL_DARK, 700));   // named, not dialled: no call buttons
-        words.addView(Ui.text(a, "Chest pain, trouble breathing, stroke signs", 12.5f, Ui.TEXT, false));
-        bar.addView(words, weighted(0));
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
-        lp.setMargins(Ui.dp(a, 20), 0, Ui.dp(a, 20), Ui.dp(a, 110));
-        root.addView(bar, lp);
-        bar.post(() -> {   // just above the tab bar, wherever it sits
-            if (nav.getHeight() == 0) return;
-            lp.bottomMargin = root.getHeight() - nav.getTop() + Ui.dp(a, 10);
-            bar.setLayoutParams(lp);
-        });
-        col.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
-            @Override
-            public void onViewAttachedToWindow(View v) {
-            }
-
-            @Override
-            public void onViewDetachedFromWindow(View v) {
-                root.removeView(bar);
-                col.removeOnAttachStateChangeListener(this);
-            }
-        });
+        LinearLayout bar = Ui.add(col, Ui.tintCard(a, Ui.CORAL_TINT), 14);
+        bar.addView(Ui.styled(a, "Emergency? Call 911.", 16, Ui.CORAL_DARK, 700));
+        Ui.add(bar, Ui.text(a, "Chest pain, trouble breathing, stroke signs", 13, Ui.TEXT, false), 2);
     }
 
     private void askLocation() {

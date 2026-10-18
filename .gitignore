@@ -10,3 +10,22 @@ proto-app/build/
 proto-app/debug.keystore
 # Downloaded datasets (tools/skin_to_core.py fetches them)
 data/external/
+
+# Gradle / Android Studio
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+captures/
+.cxx/
+.kotlin/
+# MicTest build output, local signing key and recordings
+tools/mictest/build/
+tools/mictest/debug.keystore
+tools/mictest/out/
+
+# Android Studio per-user project files
+.idea/
+*.iml

@@ -231,4 +231,4 @@ Phones have no infrared light, so we use the camera's red and green channels as 
 - **Sustained vowel ("Aaaa…"):**
   - How long and how steadily you can sustain a vowel on one breath reflects lung capacity and airway obstruction.
   - Audio features (duration, energy decay, spectral features) feed a regression trained against spirometry.
-- **Microphone processing must be off.** Phones normally apply automatic gain control and noise suppression, which would flatten exactly the loudness changes these methods rely on. Both methods need the microphone's unprocessed audio source.
+- **Microphone processing must be off.** Phones normally apply automatic gain control and noise suppression, which would flatten exactly the loudness changes these methods rely on. Neither of our Pixels offers Android's unprocessed audio source. We measured instead which source stays linear: a tone stepped in 6 dB increments should record as 6 dB steps. Only `VOICE_RECOGNITION` passed on both phones. The plain `MIC` source on the Pixel 4 hides an expander, which pushes quiet sounds down further, inside its audio chip (see `tools/mictest/`).

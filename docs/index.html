@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apollo</title>
+<meta name="description" content="Everything you forgot to pack is already in your pocket. Apollo turns your phone's own sensors into a daily health check-in, and helps you act on what it finds.">
+<meta property="og:title" content="Apollo">
+<meta property="og:description" content="Everything you forgot to pack is already in your pocket.">
+<meta property="og:image" content="shots/apollo_cover.png">
+<meta name="theme-color" content="#F6F3EE">
+<link rel="icon" href="shots/apollo_happy.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&display=swap">
+<style>
+/* The app's palette (proto-app Ui.java) */
+:root{
+  --bg:#F6F3EE; --card:#FFFFFF; --card-2:#F0ECE5; --line:#E9E4DC;
+  --text:#262421; --muted:#7A746C; --faint:#A9A39A;
+  --coral:#E8705E; --coral-dark:#CF5847; --coral-tint:#FBE9E3;
+  --leaf:#8C9D77; --leaf-dark:#5E7150; --leaf-tint:#ECF0E4;
+  --good:#4B8F5F; --ink:#1F1D1B;
+  --sunset:linear-gradient(115deg,#F27A64 0%,#F8A98C 45%,#FBD9A4 100%);
+  --shadow:0 10px 28px rgba(180,130,90,.18);
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif;font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+img{max-width:100%}
+a{color:var(--coral-dark)}
+button{font:inherit;color:inherit}
+.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+
+/* Sunset wash at the top, like every screen in the app */
+.sunset{position:absolute;inset:0 0 auto 0;height:520px;background:linear-gradient(180deg,rgba(246,243,238,0) 25%,var(--bg) 100%),var(--sunset);z-index:-1}
+
+/* Hero, after the cover */
+.hero{position:relative;padding:56px 0 24px}
+.hero .wrap{display:grid;grid-template-columns:1.05fr .95fr;gap:24px;align-items:center}
+.wordmark{font-size:14px;font-weight:600;letter-spacing:6px;color:#3A3733;margin:0 0 28px}
+h1{font-size:clamp(40px,6.2vw,68px);line-height:1.04;letter-spacing:-1.8px;font-weight:700;margin:0 0 20px;color:#2E2C2A}
+.lede{font-size:19px;color:#4A4642;max-width:500px;margin:0 0 30px}
+.actions{display:flex;gap:12px;flex-wrap:wrap}
+.btn{height:52px;padding:0 22px;border-radius:16px;display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:16px;text-decoration:none;border:none;cursor:pointer}
+.btn.primary{background:var(--coral);color:#fff;box-shadow:0 8px 20px rgba(232,112,94,.28)}
+.btn.primary:hover{background:var(--coral-dark)}
+.btn.ghost{background:rgba(255,255,255,.9);color:var(--text);border:1px solid var(--line)}
+.mascot{justify-self:center;width:min(520px,100%);aspect-ratio:800/780;background:url(shots/apollo_cover.png) center/contain no-repeat;
+  -webkit-mask-image:radial-gradient(closest-side,#000 74%,transparent 100%);mask-image:radial-gradient(closest-side,#000 74%,transparent 100%)}
+
+/* Sections */
+section{padding:72px 0;scroll-margin-top:8px}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--coral-dark);margin:0 0 10px}
+h2{font-size:clamp(30px,4.2vw,42px);line-height:1.12;letter-spacing:-.9px;margin:0 0 14px}
+.sub{color:var(--muted);font-size:18px;max-width:620px;margin:0}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:36px;flex-wrap:wrap}
+
+/* (i) buttons, like Info.java */
+.info{flex:none;width:30px;height:30px;border-radius:15px;border:1.5px solid #DCD5CB;background:var(--card);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;color:var(--muted);transition:border-color .15s,color .15s}
+.info:hover,.info:focus-visible{border-color:var(--coral);color:var(--coral-dark);outline:none}
+.info svg{width:16px;height:16px}
+.howlink{display:inline-flex;align-items:center;gap:6px;background:none;border:none;padding:0;cursor:pointer;color:var(--coral-dark);font-weight:600;font-size:15px}
+.howlink svg{width:16px;height:16px}
+
+/* Cards */
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:24px;display:flex;flex-direction:column;gap:10px}
+.card .top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.chip{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:5px 11px;background:var(--coral-tint);color:var(--coral-dark)}
+.chip.leaf{background:var(--leaf-tint);color:var(--leaf-dark)}
+.chip.ink{background:#F3EFE8;color:#4A4642}
+.card h3{margin:4px 0 0;font-size:20px;letter-spacing:-.3px}
+.card p{margin:0;color:var(--muted);font-size:15.5px}
+
+/* Feature rows: phones + copy */
+.feature{display:grid;grid-template-columns:auto 1fr;gap:56px;align-items:center}
+.feature.flip{grid-template-columns:1fr auto}
+.feature.flip .phones{order:2}
+.copy h3{font-size:clamp(24px,3vw,30px);letter-spacing:-.6px;line-height:1.15;margin:0 0 12px}
+.copy p{color:#55504A;margin:0 0 16px;font-size:17px}
+.points{list-style:none;margin:0 0 20px;padding:0;display:flex;flex-direction:column;gap:10px}
+.points li{display:flex;gap:12px;align-items:flex-start;font-size:16px}
+.points li::before{content:"";flex:none;width:8px;height:8px;border-radius:4px;background:var(--coral);margin-top:9px}
+.points.leaf li::before{background:var(--leaf)}
+
+/* Phones */
+.phones{display:flex;gap:18px;align-items:flex-start}
+.phone{margin:0;flex:none;width:236px}
+.phone.sm{width:200px}
+.phone button{display:block;width:100%;padding:7px;border:none;border-radius:34px;background:var(--ink);box-shadow:0 24px 50px rgba(150,90,60,.22);cursor:zoom-in;transition:transform .2s}
+.phone button:hover{transform:translateY(-4px)}
+.phone img{display:block;width:100%;aspect-ratio:1080/2280;object-fit:cover;border-radius:28px;background:var(--card-2)}
+.phone figcaption{margin-top:12px;font-size:14px;font-weight:600;text-align:center}
+.phone figcaption span{display:block;font-weight:400;color:var(--muted);font-size:13px}
+.phones.offset .phone:nth-child(2){margin-top:44px}
+.strip{display:flex;gap:20px;overflow-x:auto;padding:8px 20px 22px;margin:40px auto 0;max-width:1120px;scroll-snap-type:x mandatory;scrollbar-width:thin}
+.strip .phone{scroll-snap-align:start}
+
+/* Test tiles, like the Today screen */
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:22px 0}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px 14px 16px;display:flex;flex-direction:column;gap:8px;text-align:left;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.tile:hover,.tile:focus-visible{border-color:#F1B9AD;box-shadow:0 6px 18px rgba(232,112,94,.12);outline:none}
+.tile .row{display:flex;justify-content:space-between;align-items:center}
+.ico{width:30px;height:30px;border-radius:9px;background:var(--coral-tint);color:var(--coral-dark);display:flex;align-items:center;justify-content:center}
+.ico svg{width:17px;height:17px}
+.tile .i{color:var(--faint);display:flex}
+.tile .i svg{width:18px;height:18px}
+.tile b{font-size:15px;font-weight:600}
+.tile .val{font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1}
+.tile .val small{font-size:13px;font-weight:600;color:var(--muted);letter-spacing:0;margin-left:3px}
+.tile .note{font-size:13px;color:var(--muted)}
+
+/* Ring, like CheckInRing */
+.ringcard{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:20px;display:flex;align-items:center;gap:18px;margin-bottom:12px}
+.ring{position:relative;width:96px;height:96px;flex:none}
+.ring svg{width:100%;height:100%}
+.ring img{position:absolute;inset:18px;width:60px;height:60px}
+.ringcard b{display:block;font-size:12px;letter-spacing:1.2px;color:var(--coral-dark);margin-bottom:4px}
+.ringcard p{margin:0;font-size:15px;color:#55504A}
+
+/* Chat preview */
+.bubbles{display:flex;flex-direction:column;gap:10px;margin:0 0 20px;max-width:440px}
+.bubble{display:flex;gap:10px;align-items:flex-end}
+.bubble img{width:40px;height:40px;flex:none}
+.bubble p{margin:0;background:var(--card);border:1px solid var(--line);border-radius:20px 20px 20px 6px;padding:11px 14px;font-size:15px;color:var(--text)}
+.bubble.me{justify-content:flex-end}
+.bubble.me p{background:var(--coral);border-color:var(--coral);color:#fff;border-radius:20px 20px 6px 20px}
+
+/* Trust */
+.trust{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.trust .card{background:transparent;border:none;border-top:2px solid var(--coral);border-radius:0;padding:18px 0 0}
+.trust .card img{width:64px;height:64px;margin-bottom:4px}
+
+/* Research */
+.papers{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.paper{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;text-decoration:none;color:var(--text);display:flex;flex-direction:column;gap:6px;transition:border-color .15s}
+.paper:hover{border-color:#F1B9AD}
+.paper span{font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--coral-dark)}
+.paper b{font-size:16px}
+.paper small{color:var(--muted);font-size:13px}
+
+footer{padding:36px 0 140px;color:var(--muted);font-size:14px;border-top:1px solid var(--line)}
+footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+
+/* Floating tab bar, like the app's */
+.tabbar{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:20;background:var(--card);border-radius:30px;box-shadow:var(--shadow);display:flex;padding:6px;gap:2px;width:min(420px,calc(100% - 32px))}
+.tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 4px 6px;border-radius:24px;text-decoration:none;color:var(--muted);font-size:11.5px;font-weight:600}
+.tabbar a svg,.tabbar a img{width:24px;height:24px}
+.tabbar a.on{color:var(--coral)}
+
+/* Bottom sheet, like Info.Sheet */
+dialog{border:none;padding:0;background:transparent;max-width:none;max-height:none}
+dialog::backdrop{background:rgba(38,36,33,.38)}
+.sheet{position:fixed;inset:auto 0 0 0;margin:0 auto;width:min(600px,100%)}
+.sheet[open] .panel{animation:up .28s cubic-bezier(.2,.8,.2,1)}
+@keyframes up{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
+.panel{background:var(--card);border-radius:28px 28px 0 0;padding:10px 24px 32px;max-height:86vh;overflow:auto;transition:transform .2s}
+.handle{width:40px;height:5px;border-radius:3px;background:#E0D9CF;margin:0 auto 14px}
+.panel .bar{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.panel .bar img{width:52px;height:52px}
+.panel h4{flex:1;margin:0;font-size:22px;letter-spacing:-.4px;line-height:1.2}
+.close{width:38px;height:38px;border-radius:19px;border:none;background:var(--card-2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none}
+.close svg{width:18px;height:18px}
+.panel .body p{margin:0 0 12px;color:#4A4642;font-size:16px}
+.panel .body ol{margin:4px 0 14px;padding:0;list-style:none;counter-reset:s;display:flex;flex-direction:column;gap:8px}
+.panel .body ol li{counter-increment:s;display:flex;gap:10px;font-size:15px;color:#4A4642}
+.panel .body ol li::before{content:counter(s);flex:none;width:24px;height:24px;border-radius:12px;background:var(--coral-tint);color:var(--coral-dark);font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.panel .paperlink{display:inline-flex;align-items:center;gap:6px;font-weight:600;text-decoration:none;margin-top:4px}
+.panel .disclaimer{margin-top:16px;padding:12px 14px;border-radius:14px;background:#F8EDD6;color:#7A5418;font-size:14px}
+
+/* Lightbox */
+.zoom{position:fixed;inset:0;width:100%;height:100%;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px}
+.zoom[open]{display:flex}
+.zoom::backdrop{background:rgba(31,29,27,.82)}
+.zoom img{max-height:82vh;width:auto;border-radius:30px;border:7px solid var(--ink);box-shadow:0 30px 80px rgba(0,0,0,.4)}
+.zoom p{margin:0;color:#fff;font-weight:600}
+.zoom .close{position:absolute;top:18px;right:18px;background:rgba(255,255,255,.92)}
+
+@media (max-width:900px){
+  .hero{padding-top:36px}
+  .hero .wrap{grid-template-columns:1fr}
+  .mascot{order:-1;width:min(340px,90%);margin-bottom:-12px}
+  .cards,.trust{grid-template-columns:1fr}
+  .papers{grid-template-columns:1fr 1fr}
+  .feature,.feature.flip{grid-template-columns:1fr;gap:32px}
+  .feature.flip .phones{order:0}
+  .phones{overflow-x:auto;margin:0 -20px;padding:4px 20px 18px;scroll-snap-type:x mandatory}
+  .phones .phone{scroll-snap-align:center}
+  .phones.offset .phone:nth-child(2){margin-top:0}
+  .phone{width:220px}.phone.sm{width:190px}
+  section{padding:52px 0}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 11v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="7.6" r="1.25" fill="currentColor"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M7 17L17 7M9 7h8v8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-temp" viewBox="0 0 24 24"><path d="M10 4a2 2 0 0 1 4 0v9.5a4 4 0 1 1-4 0z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><circle cx="12" cy="16.5" r="1.6" fill="currentColor"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></symbol>
+  <symbol id="i-calm" viewBox="0 0 24 24"><path d="M3 12c2-3 4-3 6 0s4 3 6 0 4-3 6 0" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path d="M6 17c1.5-1.6 3-1.6 4.5 0" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+  <symbol id="i-wind" viewBox="0 0 24 24"><path d="M3 9h11a3 3 0 1 0-3-3M3 15h15a3 3 0 1 1-3 3M3 12h8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11l8-6 8 6v8a1 1 0 0 1-1 1h-4v-5H9v5H5a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+  <symbol id="i-care" viewBox="0 0 24 24"><path d="M9.5 4.5h5v5h5v5h-5v5h-5v-5h-5v-5h5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</svg>
+
+<header class="hero" id="top">
+  <div class="sunset" aria-hidden="true"></div>
+  <div class="wrap">
+    <div>
+      <p class="wordmark">APOLLO</p>
+      <h1>Everything you forgot to pack is already in your pocket.</h1>
+      <p class="lede">Apollo turns the sensors already in your phone into a quick daily health check-in, then helps you act on what it finds. No extra hardware.</p>
+      <div class="actions">
+        <a class="btn primary" href="#checkin">See the app <span aria-hidden="true">→</span></a>
+        <button class="btn ghost" type="button" data-sheet="about">How does it work?</button>
+      </div>
+    </div>
+    <div class="mascot" role="img" aria-label="Apollo, an apple mascot, waving and winking"></div>
+  </div>
+</header>
+
+<main>
+<section id="services" aria-labelledby="services-h">
+  <div class="wrap">
+    <div class="head">
+      <div>
+        <p class="eyebrow">What it does</p>
+        <h2 id="services-h">Two kinds of service, one next step.</h2>
+        <p class="sub">Tests you take when you want them, tracking that runs quietly if you opt in, and a clear path from a reading to what to do about it.</p>
+      </div>
+    </div>
+    <div class="cards">
+      <article class="card">
+        <div class="top"><span class="chip">Tests you take</span><button class="info" type="button" data-sheet="tests" aria-label="About tests you take"><svg><use href="#i-info"/></svg></button></div>
+        <h3>A daily check-in</h3>
+        <p>Four quick tests: heart rate, temperature, a lung check and calm sensing. A ring shows what's left today.</p>
+      </article>
+      <article class="card">
+        <div class="top"><span class="chip leaf">Opt-in passive tracking</span><button class="info" type="button" data-sheet="passive" aria-label="About passive tracking"><svg><use href="#i-info"/></svg></button></div>
+        <h3>All day, in the background</h3>
+        <p>Steps and flights climbed, plus a prototype that counts blinks and gaze shifts. Nothing runs until you turn it on.</p>
+      </article>
+      <article class="card">
+        <div class="top"><span class="chip ink">Actionable insights</span><button class="info" type="button" data-sheet="insights" aria-label="About turning readings into action"><svg><use href="#i-info"/></svg></button></div>
+        <h3>From reading to remedy</h3>
+        <p>Ask Apollo what a reading means, get products picked for you, then order delivery or find care nearby.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="checkin" aria-labelledby="checkin-h">
+  <div class="wrap feature">
+    <div class="phones offset">
+      <figure class="phone"><button type="button" data-zoom="shots/01_today_top.jpg" data-cap="Today"><img src="shots/01_today_top.jpg" alt="Today screen with the daily check-in ring and test tiles"></button><figcaption>Today<span>Your daily check-in</span></figcaption></figure>
+      <figure class="phone sm"><button type="button" data-zoom="shots/08_heart_rate_intro.jpg" data-cap="Heart rate"><img src="shots/08_heart_rate_intro.jpg" alt="Heart rate test intro: Find your rhythm" loading="lazy"></button><figcaption>Heart rate<span>Find your rhythm</span></figcaption></figure>
+    </div>
+    <div class="copy">
+      <p class="eyebrow">Tests you take</p>
+      <h3 id="checkin-h">Four tests. About five minutes. Just your phone.</h3>
+      <div class="ringcard">
+        <div class="ring" aria-hidden="true">
+          <svg viewBox="0 0 100 100"><g fill="none" stroke-width="9" stroke-linecap="round">
+            <path d="M44 6.4A44 44 0 0 0 6.4 44" stroke="#E8705E"/>
+            <path d="M6.4 56A44 44 0 0 0 44 93.6" stroke="#E8705E"/>
+            <path d="M56 93.6A44 44 0 0 0 93.6 56" stroke="#F6C2B6"/>
+            <path d="M93.6 44A44 44 0 0 0 56 6.4" stroke="#EAE3D9"/>
+          </g></svg>
+          <img src="shots/apollo_happy.png" alt="">
+        </div>
+        <div><b>YOUR DAILY CHECK-IN</b><p>The ring fills one quarter per test. Tap once and Apollo runs the rest in order.</p></div>
+        <button class="info" type="button" data-sheet="ring" aria-label="About the check-in ring"><svg><use href="#i-info"/></svg></button>
+      </div>
+      <div class="tiles">
+        <button class="tile" type="button" data-sheet="hr"><span class="row"><span class="ico"><svg><use href="#i-heart"/></svg></span><span class="i"><svg><use href="#i-info"/></svg></span></span><b>Heart rate</b><span class="val">20<small>s</small></span><span class="note">Agrees with a Fitbit</span></button>
+        <button class="tile" type="button" data-sheet="temp"><span class="row"><span class="ico"><svg><use href="#i-temp"/></svg></span><span class="i"><svg><use href="#i-info"/></svg></span></span><b>Temperature</b><span class="val">90<small>s</small></span><span class="note">Calibrates to you</span></button>
+        <button class="tile" type="button" data-sheet="lung"><span class="row"><span class="ico"><svg><use href="#i-wind"/></svg></span><span class="i"><svg><use href="#i-info"/></svg></span></span><b>Lung check</b><span class="val">40<small>s</small></span><span class="note">Breath strength vs your usual</span></button>
+        <button class="tile" type="button" data-sheet="calm"><span class="row"><span class="ico"><svg><use href="#i-calm"/></svg></span><span class="i"><svg><use href="#i-info"/></svg></span></span><b>Calm sensing</b><span class="val">1<small>min</small></span><span class="note">Sonar, no camera</span></button>
+      </div>
+    </div>
+  </div>
+  <div class="strip" aria-label="Test screens">
+    <figure class="phone sm"><button type="button" data-zoom="shots/06_temperature_intro.jpg" data-cap="Temperature"><img src="shots/06_temperature_intro.jpg" alt="Temperature test intro" loading="lazy"></button><figcaption>Temperature<span>A gentle temperature check</span></figcaption></figure>
+    <figure class="phone sm"><button type="button" data-zoom="shots/08_heart_rate_intro.jpg" data-cap="Heart rate"><img src="shots/08_heart_rate_intro.jpg" alt="Heart rate test intro" loading="lazy"></button><figcaption>Heart rate<span>Fingertip on the camera</span></figcaption></figure>
+    <figure class="phone sm"><button type="button" data-zoom="shots/12_breath_intro.jpg" data-cap="Lung check"><img src="shots/12_breath_intro.jpg" alt="Lung check intro" loading="lazy"></button><figcaption>Lung check<span>A quick lung check</span></figcaption></figure>
+    <figure class="phone sm"><button type="button" data-zoom="shots/10_calm_intro.jpg" data-cap="Calm sensing"><img src="shots/10_calm_intro.jpg" alt="Calm sensing intro" loading="lazy"></button><figcaption>Calm sensing<span>Sonar through the speaker</span></figcaption></figure>
+    <figure class="phone sm"><button type="button" data-zoom="shots/04_trends.jpg" data-cap="Trends"><img src="shots/04_trends.jpg" alt="Trends screen" loading="lazy"></button><figcaption>Trends<span>Week, month, all time</span></figcaption></figure>
+    <figure class="phone sm"><button type="button" data-zoom="shots/05_trends_scrolled.jpg" data-cap="Latest readings"><img src="shots/05_trends_scrolled.jpg" alt="Trends with latest readings" loading="lazy"></button><figcaption>Latest readings<span>Compared with your usual</span></figcaption></figure>
+  </div>
+</section>
+
+<section id="allday" aria-labelledby="allday-h">
+  <div class="wrap feature flip">
+    <div class="phones">
+      <figure class="phone"><button type="button" data-zoom="shots/02_today_scrolled.jpg" data-cap="All day"><img src="shots/02_today_scrolled.jpg" alt="All day: steps, floors climbed, phone warmth and eyes" loading="lazy"></button><figcaption>All day<span>Steps, floors and eyes</span></figcaption></figure>
+    </div>
+    <div class="copy">
+      <p class="eyebrow">Opt-in passive tracking</p>
+      <h3 id="allday-h">Measured quietly. Nothing to start.</h3>
+      <p>Turn it on once and Apollo keeps a gentle eye on your day.</p>
+      <ul class="points leaf">
+        <li>Steps from the step counter, flights climbed from the barometer.</li>
+        <li>Eye tracking (prototype): blinks and gaze shifts per minute, early signs of fatigue or overload.</li>
+        <li>Counts only, never images. A notification shows whenever it's running.</li>
+      </ul>
+      <button class="howlink" type="button" data-sheet="passive"><svg><use href="#i-info"/></svg>What gets measured, and what doesn't</button>
+    </div>
+  </div>
+</section>
+
+<section id="care" aria-labelledby="care-h">
+  <div class="wrap feature">
+    <div class="phones offset">
+      <figure class="phone"><button type="button" data-zoom="shots/14_care_top.jpg" data-cap="Care"><img src="shots/14_care_top.jpg" alt="Care: Picked for you, based on your temperature" loading="lazy"></button><figcaption>Picked for you<span>Each shelf says why</span></figcaption></figure>
+      <figure class="phone sm"><button type="button" data-zoom="shots/17_product_sheet.jpg" data-cap="Product"><img src="shots/17_product_sheet.jpg" alt="Product sheet for Tylenol Extra Strength" loading="lazy"></button><figcaption>Product<span>Real photo and price</span></figcaption></figure>
+    </div>
+    <div class="copy">
+      <p class="eyebrow">Actionable insights</p>
+      <h3 id="care-h">Care, picked for how you feel.</h3>
+      <p>Apollo turns readings, chats and searches into a few short shelves, like a pharmacy aisle sorted for you.</p>
+      <ul class="points">
+        <li>"Based on your temperature": every shelf explains itself.</li>
+        <li>Real products with photos, sizes, prices and the FDA drug label.</li>
+        <li>Order through DoorDash or Uber Eats. You check out there.</li>
+      </ul>
+      <div class="actions">
+        <button class="howlink" type="button" data-sheet="picks"><svg><use href="#i-info"/></svg>How Apollo picks these</button>
+      </div>
+    </div>
+  </div>
+  <div class="strip" aria-label="Care screens">
+    <figure class="phone sm"><button type="button" data-zoom="shots/15_care_scrolled.jpg" data-cap="Shelves"><img src="shots/15_care_scrolled.jpg" alt="More Picked for you shelves" loading="lazy"></button><figcaption>Shelves<span>Labelled: #1 pick, Best price</span></figcaption></figure>
+    <figure class="phone sm"><button type="button" data-zoom="shots/16_care_scrolled_more.jpg" data-cap="Shop by need"><img src="shots/16_care_scrolled_more.jpg" alt="Shop by need categories" loading="lazy"></button><figcaption>Shop by need<span>Pain, cough, allergy, sleep</span></figcaption></figure>
+    <figure class="phone sm"><button type="button" data-zoom="shots/20_category_see_all.jpg" data-cap="Pain &amp; fever"><img src="shots/20_category_see_all.jpg" alt="Pain and fever category list" loading="lazy"></button><figcaption>Pain &amp; fever<span>Compare at a glance</span></figcaption></figure>
+    <figure class="phone sm"><button type="button" data-zoom="shots/18_product_sheet_scrolled.jpg" data-cap="FDA label facts"><img src="shots/18_product_sheet_scrolled.jpg" alt="FDA label facts and delivery buttons" loading="lazy"></button><figcaption>FDA label facts<span>Then DoorDash or Uber Eats</span></figcaption></figure>
+    <figure class="phone sm"><button type="button" data-zoom="shots/19_how_apollo_picks.jpg" data-cap="How Apollo picks these"><img src="shots/19_how_apollo_picks.jpg" alt="How Apollo picks these sheet" loading="lazy"></button><figcaption>How it picks<span>Always one tap away</span></figcaption></figure>
+  </div>
+</section>
+
+<section id="nearby" aria-labelledby="nearby-h">
+  <div class="wrap feature flip">
+    <div class="phones offset">
+      <figure class="phone"><button type="button" data-zoom="shots/21_services_hospitals.jpg" data-cap="Services &amp; hospitals"><img src="shots/21_services_hospitals.jpg" alt="Map of care nearby with a pinned 911 bar" loading="lazy"></button><figcaption>Care nearby<span>Map, with 911 pinned</span></figcaption></figure>
+      <figure class="phone sm"><button type="button" data-zoom="shots/22_services_scrolled.jpg" data-cap="Places"><img src="shots/22_services_scrolled.jpg" alt="Nearby clinics and pharmacies with hours" loading="lazy"></button><figcaption>Places<span>Hours and directions</span></figcaption></figure>
+    </div>
+    <div class="copy">
+      <p class="eyebrow">When you need a person</p>
+      <h3 id="nearby-h">The right place, open now.</h3>
+      <p>Hospitals, urgent care, clinics and pharmacies near you, with hours, phone numbers and directions.</p>
+      <ul class="points">
+        <li>Filter by type, or show only what's open now.</li>
+        <li>"Which should I choose?" explains ER vs urgent care vs a clinic.</li>
+        <li>Emergency? Call 911 stays pinned to the screen.</li>
+      </ul>
+      <button class="howlink" type="button" data-sheet="nearby"><svg><use href="#i-info"/></svg>Where this comes from</button>
+    </div>
+  </div>
+</section>
+
+<section id="apollo" aria-labelledby="apollo-h">
+  <div class="wrap feature">
+    <div class="phones offset">
+      <figure class="phone"><button type="button" data-zoom="shots/26_chat_reply.jpg" data-cap="Ask Apollo"><img src="shots/26_chat_reply.jpg" alt="Apollo answering 'Do I have a fever?' from the latest reading" loading="lazy"></button><figcaption>Ask Apollo<span>Answers from your readings</span></figcaption></figure>
+      <figure class="phone sm"><button type="button" data-zoom="shots/25_chat.jpg" data-cap="Chat with Apollo"><img src="shots/25_chat.jpg" alt="Chat with Apollo, with suggested questions" loading="lazy"></button><figcaption>Chat<span>Suggested questions</span></figcaption></figure>
+    </div>
+    <div class="copy">
+      <p class="eyebrow">Ask Apollo</p>
+      <h3 id="apollo-h">A friendly guide who knows your numbers.</h3>
+      <div class="bubbles" aria-label="Example conversation">
+        <div class="bubble me"><p>Do I have a fever?</p></div>
+        <div class="bubble"><img src="shots/apollo_thinking.png" alt=""><p>Your last reading was a little warm. Want to recheck, or see what helps?</p></div>
+      </div>
+      <ul class="points">
+        <li>Explains readings against your own history and links to the right test.</li>
+        <li>Runs on the phone by default. Gemini mode is opt-in.</li>
+        <li>Emergencies are handled first, on the phone, with 911 and 988.</li>
+      </ul>
+      <button class="howlink" type="button" data-sheet="chat"><svg><use href="#i-info"/></svg>What Apollo knows</button>
+    </div>
+  </div>
+</section>
+
+<section id="trust" aria-labelledby="trust-h">
+  <div class="wrap">
+    <div class="head"><div>
+      <p class="eyebrow">Built on trust</p>
+      <h2 id="trust-h">Your health data stays yours.</h2>
+    </div></div>
+    <div class="trust">
+      <article class="card"><img src="shots/apollo_cares.png" alt=""><div class="top"><h3>Stays on the phone</h3><button class="info" type="button" data-sheet="privacy" aria-label="About privacy"><svg><use href="#i-info"/></svg></button></div><p>No accounts and no cloud database.</p></article>
+      <article class="card"><img src="shots/apollo_calm.png" alt=""><div class="top"><h3>Safety before AI</h3><button class="info" type="button" data-sheet="safety" aria-label="About safety"><svg><use href="#i-info"/></svg></button></div><p>Emergency words get 911 and 988 straight away.</p></article>
+      <article class="card"><img src="shots/apollo_wink.png" alt=""><div class="top"><h3>You stay in control</h3><button class="info" type="button" data-sheet="control" aria-label="About ordering"><svg><use href="#i-info"/></svg></button></div><p>Apollo never buys anything for you.</p></article>
+    </div>
+  </div>
+</section>
+
+<section id="research" aria-labelledby="research-h">
+  <div class="wrap">
+    <div class="head"><div>
+      <p class="eyebrow">The research behind it</p>
+      <h2 id="research-h">From the lab to your pocket.</h2>
+      <p class="sub">Apollo builds on published work from UW Ubicomp and others.</p>
+    </div></div>
+    <div class="papers">
+      <a class="paper" href="https://doi.org/10.1145/3580850" target="_blank" rel="noopener"><span>Temperature</span><b>FeverPhone</b><small>Body temperature from phone thermistors</small></a>
+      <a class="paper" href="https://doi.org/10.2196/mhealth.7275" target="_blank" rel="noopener"><span>Heart rate</span><b>Camera pulse</b><small>Heart rate from a fingertip on the camera</small></a>
+      <a class="paper" href="https://doi.org/10.1145/3772318.3791076" target="_blank" rel="noopener"><span>Calm sensing</span><b>RageSense</b><small>Restlessness from inaudible sonar</small></a>
+      <a class="paper" href="https://arxiv.org/abs/2008.03872" target="_blank" rel="noopener"><span>Lung check</span><b>Barometers Can Hear</b><small>Breath from the phone's barometer</small></a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Apollo · built at DubHacks 2026, University of Washington</span>
+    <span>A research prototype, not a medical device.</span>
+  </div>
+</footer>
+
+<nav class="tabbar" aria-label="Sections">
+  <a href="#checkin" data-for="checkin allday"><svg><use href="#i-home"/></svg>Today</a>
+  <a href="#care" data-for="care nearby"><svg><use href="#i-care"/></svg>Care</a>
+  <a href="#apollo" data-for="apollo trust research"><img src="shots/apollo_happy.png" alt="">Apollo</a>
+</nav>
+
+<dialog class="sheet" id="sheet" aria-labelledby="sheet-title">
+  <div class="panel" id="panel">
+    <div class="handle" aria-hidden="true"></div>
+    <div class="bar"><img id="sheet-img" src="shots/apollo_ask.png" alt=""><h4 id="sheet-title"></h4><button class="close" type="button" data-close aria-label="Close"><svg><use href="#i-close"/></svg></button></div>
+    <div class="body" id="sheet-body"></div>
+  </div>
+</dialog>
+
+<dialog class="zoom" id="zoom" aria-label="Screenshot">
+  <button class="close" type="button" data-close aria-label="Close"><svg><use href="#i-close"/></svg></button>
+  <img id="zoom-img" alt="">
+  <p id="zoom-cap"></p>
+</dialog>
+
+<script>
+const PAPER = {
+  fever: ['https://doi.org/10.1145/3580850', 'FeverPhone (UW Ubicomp)'],
+  pulse: ['https://doi.org/10.2196/mhealth.7275', 'Camera pulse study'],
+  rage: ['https://doi.org/10.1145/3772318.3791076', 'RageSense'],
+  baro: ['https://arxiv.org/abs/2008.03872', 'Barometers Can Hear'],
+};
+const NOT_MEDICAL = 'Apollo is a research prototype, not a medical device. It can\'t diagnose anything.';
+const SHEETS = {
+  about: { img: 'apollo_happy', title: 'How Apollo works', body: `
+    <p>Your phone is full of sensors: temperature sensors that protect the battery, a camera and flash, a barometer, a speaker and microphones. Research from UW Ubicomp and others shows they can measure much more than they were built for.</p>
+    <ol><li>Take a quick check-in, or let passive tracking run in the background.</li><li>Apollo compares each reading with your own usual.</li><li>Then it helps you act: what it means, what might help, and where to get it.</li></ol>` },
+  tests: { img: 'apollo_ask', title: 'Tests you take', body: `
+    <p>Four short tests that use sensors already in your phone. Do them together as your daily check-in, or run any one on its own.</p>
+    <p>Apollo compares each result with your own history, so you see what's usual for you, not an average.</p>` },
+  passive: { img: 'apollo_calm', title: 'Opt-in passive tracking', body: `
+    <p>Nothing runs until you turn it on, and a notification shows whenever it's running.</p>
+    <ol><li>Steps come from the phone's step counter.</li><li>Flights climbed come from the barometer, which feels the small change in air pressure as you go up.</li><li>Eye tracking (prototype) uses the front camera to count blinks and gaze shifts. Only the counts are saved, never images.</li></ol>` },
+  insights: { img: 'apollo_cares', title: 'From reading to remedy', body: `
+    <p>A number alone doesn't help much. Apollo explains what a reading means for you, suggests products that fit, and shows where to get them: delivery through DoorDash or Uber Eats, or the nearest open pharmacy or clinic.</p>` },
+  ring: { img: 'apollo_happy', title: 'Your daily check-in', body: `
+    <p>The ring fills one quarter per test, so you can see what's left at a glance. Coral is done, pale coral is next.</p>
+    <p>Tap <b>Start your check-in</b> and Apollo runs the remaining tests in order. Temperature goes first, so the camera flash doesn't warm the phone before it.</p>` },
+  hr: { img: 'apollo_ask', title: 'Heart rate', paper: 'pulse', body: `
+    <ol><li>Cover the rear camera and flash with a fingertip.</li><li>Hold still for 20 seconds.</li><li>Read your heart rate.</li></ol>
+    <p>Each heartbeat pushes a little more blood into your fingertip, which changes how much light gets through. Apollo estimates your rate two ways and shows it only when they agree. In our tests it agreed closely with a Fitbit.</p>` },
+  temp: { img: 'apollo_ask', title: 'Temperature', paper: 'fever', body: `
+    <ol><li>Leave the phone on a table until it's ready.</li><li>Pick it up by its edges.</li><li>Press the screen to your forehead for 90 seconds.</li></ol>
+    <p>Apollo reads the phone's internal temperature sensors and how fast your forehead warms the glass. A one-time calibration fits it to you and your phone.</p>
+    <p>If it reads warm, confirm with a thermometer.</p>` },
+  lung: { img: 'apollo_ask', title: 'Lung check', paper: 'baro', body: `
+    <ol><li>Lay the phone flat, screen up.</li><li>Hold your lips just above the middle of the screen.</li><li>Blow hard each time it says Blow now.</li></ol>
+    <p>The glass flexes slightly and the barometer inside feels the pressure. Apollo compares your breath strength with your own usual, so you can see change over time. It isn't a peak-flow measurement.</p>` },
+  calm: { img: 'apollo_calm', title: 'Calm sensing', paper: 'rage', body: `
+    <p>The speaker plays a tone too high to hear and the microphone listens to its echo, like sonar. When your movement spikes above your normal, Apollo gently nudges you to take a breath.</p>
+    <p>No camera, and the sound is processed on the phone.</p>` },
+  picks: { img: 'apollo_cares', title: 'How Apollo picks these', body: `
+    <p>Apollo learns from your readings, what you've talked about in chat, and what you search, view and hide. Each shelf says why it's there, like "Based on your temperature".</p>
+    <p>It all runs on your phone, and you can reset it any time. If you don't need anything, Apollo will say so.</p>
+    <p>Photos, sizes and recent prices come from UPCitemdb. Uses and warnings come from the FDA's own drug label, through openFDA.</p>
+    <div class="disclaimer">Ideas, not medical advice. Ask a pharmacist if you take other medicines, are pregnant, or are buying for a child.</div>` },
+  nearby: { img: 'apollo_cares', title: 'Care nearby', body: `
+    <p>Places, hours and phone numbers come from OpenStreetMap. Apollo uses an approximate location to search, and opening hours can be out of date, so call ahead when it matters.</p>
+    <p>In an emergency, call 911. That button is always on screen.</p>` },
+  chat: { img: 'apollo_thinking', title: 'What Apollo knows', body: `
+    <p>By default Apollo answers on the phone, from your own readings and history.</p>
+    <p>Turn on <b>Gemini</b> for fuller answers. Your message and a short summary of your readings are then sent to Google. You can turn it off any time.</p>
+    <p>Emergency and crisis messages never reach the AI. Apollo answers them on the phone straight away, with 911 and 988.</p>` },
+  privacy: { img: 'apollo_cares', title: 'Stays on the phone', body: `
+    <p>No accounts and no cloud database. Your readings live on your phone.</p>
+    <p>Only search words, an approximate location for nearby care, and, if you turn Gemini on, your chat and a short summary of your readings leave the phone.</p>` },
+  safety: { img: 'apollo_calm', title: 'Safety before AI', body: `
+    <p>Simple, predictable rules run before any AI. Emergency or crisis words get 911 and 988 straight away, on the phone, and are never used for recommendations.</p>
+    <p>Fever answers always say to confirm with a thermometer.</p>` },
+  control: { img: 'apollo_wink', title: 'You stay in control', body: `
+    <p>DoorDash and Uber Eats don't offer a public ordering API, so Apollo opens their app (or their site inside Apollo) with your item searched. You review and check out there.</p>
+    <p>Apollo never buys anything on its own.</p>` },
+};
+
+const sheet = document.getElementById('sheet'), panel = document.getElementById('panel');
+function openSheet(id) {
+  const s = SHEETS[id]; if (!s) return;
+  document.getElementById('sheet-title').textContent = s.title;
+  document.getElementById('sheet-img').src = `shots/${s.img}.png`;
+  let html = s.body;
+  if (s.paper) html += `<a class="paperlink" href="${PAPER[s.paper][0]}" target="_blank" rel="noopener">How does this work? ${PAPER[s.paper][1]} <svg width="16" height="16"><use href="#i-arrow"/></svg></a>`;
+  if (['hr', 'temp', 'lung', 'calm'].includes(id)) html += `<div class="disclaimer">${NOT_MEDICAL}</div>`;
+  document.getElementById('sheet-body').innerHTML = html;
+  panel.style.transform = '';
+  sheet.showModal();
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-sheet]'); if (t) { openSheet(t.dataset.sheet); return; }
+  const z = e.target.closest('[data-zoom]');
+  if (z) {
+    document.getElementById('zoom-img').src = z.dataset.zoom;
+    document.getElementById('zoom-img').alt = z.dataset.cap;
+    document.getElementById('zoom-cap').textContent = z.dataset.cap;
+    document.getElementById('zoom').showModal(); return;
+  }
+  if (e.target.closest('[data-close]')) { e.target.closest('dialog').close(); return; }
+  if (e.target.tagName === 'DIALOG') e.target.close();   // backdrop
+});
+
+// Swipe the sheet down to close, like the app
+let y0 = null;
+panel.addEventListener('touchstart', e => { if (panel.scrollTop <= 0) y0 = e.touches[0].clientY; }, { passive: true });
+panel.addEventListener('touchmove', e => { if (y0 == null) return; const d = e.touches[0].clientY - y0; if (d > 0) panel.style.transform = `translateY(${d}px)`; }, { passive: true });
+panel.addEventListener('touchend', e => {
+  if (y0 == null) return;
+  const d = e.changedTouches[0].clientY - y0; y0 = null;
+  if (d > 90) sheet.close(); else panel.style.transform = '';
+});
+
+// Tab bar follows the section in view
+const tabs = [...document.querySelectorAll('.tabbar a')];
+const seen = new IntersectionObserver(entries => {
+  for (const en of entries) if (en.isIntersecting) {
+    const id = en.target.id;
+    tabs.forEach(a => a.classList.toggle('on', a.dataset.for.split(' ').includes(id)));
+    if (id === 'top' || id === 'services') tabs.forEach(a => a.classList.remove('on'));
+  }
+}, { rootMargin: '-45% 0px -50% 0px' });
+document.querySelectorAll('#top, main section').forEach(s => seen.observe(s));
+</script>
+</body>
+</html>

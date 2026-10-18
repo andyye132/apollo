@@ -1,0 +1,3 @@
+minute_start_ms,minute_end_ms,frames,face_s,paused_s,blinks,gaze_shifts,blinks_per_face_min,shifts_per_face_min,read
+1738734744765,1738734804803,840,59.8,0.0,29,57,29.1,57.2,Learning your baseline
+1738734804803,1738734815174,146,8.5,0.0,5,5,35.4,35.4,Not enough face time

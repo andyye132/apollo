@@ -1,0 +1,14 @@
+{
+  "session": 2,
+  "port": "/dev/cu.usbmodem2101",
+  "mac_start_send_s": 1792277981.056871,
+  "mac_start_ack_s": 1792277981.0644522,
+  "phone_offset_start_ms": 84.92302894592285,
+  "phone_rtt_start_ms": 17.40431785583496,
+  "mac_stop_send_s": 1792277997.073549,
+  "phone_offset_stop_ms": 84.23447608947754,
+  "phone_rtt_stop_ms": 15.665054321289062,
+  "header_uptime_ms": 439908,
+  "last_uptime_ms": 455869,
+  "records": 2967
+}

@@ -12,6 +12,16 @@ import java.util.Random;
  *  - JitaTrigger: quiet on a steady baseline, fires once on a sustained rise, respects the cooldown.
  *  - TouchWorld: a ball dropped on a touch bounces back up; a firmer touch bounces it higher.
  *  - FeverAnalysis: calibrating k at one known temperature recovers other temperatures from Newton curves.
+ *  - FeverForest: a run that warms 1.2 °C/min from 28 °C gives those features, and a stump forest splits on them.
+ *  - ReadingCheck: a still run is good; placing the phone doesn't count; a bump is rough; losing contact, no warming
+ *    or moving the whole time asks for a redo.
+ *  - BlowDetector: four blows on a noisy, drifting 25 Hz trace are found, a finger press is left out, the top three
+ *    give the strength; too few or uneven blows are flagged; the baseline is the median of the last five.
+ *  - EyeMetrics: the adaptive gaze-shift threshold catches 12° moves the old fixed one missed, without false shifts
+ *    on a still gaze, and stays quiet on a noisy picture.
+ *  - EyeLog: reads old and new minute files, weights rates by face time, and seeds baselines from new minutes only.
+ *  - FloorCounter: 3 flights of stairs count 3; an elevator, the weather, a door's pressure jump and flat walking
+ *    count none; going down counts as down; a long hill counts like Apple Health does.
  */
 public class CoreCheck {
     static int failures;
@@ -30,6 +40,11 @@ public class CoreCheck {
         exposure();
         jolt();
         steadiness();
+        forest();
+        readingCheck();
+        blows();
+        eyes();
+        floors();
         System.out.println(failures == 0 ? "all core checks passed" : failures + " core check(s) FAILED");
         if (failures > 0) System.exit(1);
     }
@@ -314,5 +329,230 @@ public class CoreCheck {
         check(Double.isNaN(dr2[0]), "3 s of baseline counts as no baseline (no number), not as a drift");
         FeverAnalysis.Report ok = run(36.5, 29, 0.02, rng);
         check(!FeverAnalysis.drifting(FeverAnalysis.drift(ok)), "a settled phone (+0.02 °C/min) passes the drift check");
+    }
+
+    static void forest() {
+        System.out.println("FeverForest");
+        // A run like the app records: 30 s still at 28 °C, a 10 s wait, then 90 s on a forehead warming 1.2 °C/min.
+        java.util.List<double[]> a = new java.util.ArrayList<>(), b = new java.util.ArrayList<>();
+        for (int s = -40; s <= 89; s++) {
+            double c = 28 + (s > 0 ? 1.2 * s / 60.0 : 0);
+            a.add(new double[]{100.25 + s, c + 0.05, s >= 0 ? 1 : 0});
+            b.add(new double[]{100.25 + s, c - 0.05, s >= 0 ? 1 : 0});
+        }
+        double[] x = FeverForest.features(a, b);
+        check(x != null && Math.abs(x[0] - 28) < 1e-9, "start temperature 28.00 (got " + (x == null ? "none" : String.format(Locale.US, "%.3f", x[0])) + ")");
+        check(x != null && Math.abs(x[1] - 1.2) < 1e-9, "warming rate 1.20 °C/min");
+        check(x != null && Math.abs(x[2] - 0.6) < 1e-9 && Math.abs(x[3] - 0.1) < 1e-9, "rise 0.60 °C at 30 s and 0.10 °C at 5 s");
+        check(x != null && Math.abs(x[4] - 1.2 * 89 / 60) < 1e-9, "rise at the end of contact (89 s)");
+        check(FeverForest.features(a.subList(0, 10), b.subList(0, 10)) == null, "too short a run gives no features");
+        String text = "features start_c rate rise30 jump5 rise90\nmeta runs=2 people=1 loo_mae=0.1\n"
+                + "tree 3\n1 1.0 1 2 37.0\n-2 -2.0 -1 -1 36.5\n-2 -2.0 -1 -1 37.5\n"
+                + "tree 1\n-2 -2.0 -1 -1 37.0\n";
+        try {
+            FeverForest f = FeverForest.read(new java.io.ByteArrayInputStream(text.getBytes("UTF-8")));
+            check(f.trees() == 2 && "2".equals(f.meta("runs", "")), "reads the trees and the meta line");
+            check(Math.abs(f.predict(new double[]{28, 0.8, 0, 0, 0}) - 36.75) < 1e-12, "slow warming goes left: (36.5 + 37.0) / 2");
+            check(Math.abs(f.predict(new double[]{28, 1.2, 0, 0, 0}) - 37.25) < 1e-12, "fast warming goes right: (37.5 + 37.0) / 2");
+        } catch (java.io.IOException e) {
+            check(false, "reads a forest: " + e);
+        }
+    }
+
+    /** A synthetic 90 s contact: warming `rate` °C/min, with gyro {median, peak} from `motion(t)`. */
+    static ReadingCheck run(double rate, java.util.function.DoubleUnaryOperator temp, java.util.function.DoubleFunction<double[]> motion) {
+        double[] t = new double[100], y = new double[100];
+        java.util.List<double[]> m = new java.util.ArrayList<>();
+        for (int i = 0; i < 100; i++) {
+            t[i] = i - 10;
+            y[i] = temp.applyAsDouble(t[i]);
+            if (t[i] >= 0) {
+                double[] g = motion.apply(t[i]);
+                m.add(new double[]{t[i], g[0], g[1]});
+            }
+        }
+        return ReadingCheck.of(t, y, 89, m);
+    }
+
+    static void readingCheck() {
+        System.out.println("ReadingCheck");
+        java.util.function.DoubleUnaryOperator warm = s -> 28 + (s > 0 ? 1.2 * s / 60 : 0);
+        java.util.function.DoubleFunction<double[]> still = s -> new double[]{0.01, 0.03};
+        java.util.function.DoubleFunction<double[]> placed = s -> s < 2 ? new double[]{2.3, 4.0} : new double[]{0.01, 0.03};
+        check(run(1.2, warm, still).verdict == ReadingCheck.Verdict.GOOD, "a still run on a forehead is good");
+        check(run(1.2, warm, placed).verdict == ReadingCheck.Verdict.GOOD, "pressing the phone on (first 2 s, 2.3 rad/s) doesn't count");
+        check(run(1.2, warm, s -> Math.abs(s - 40) < 0.5 ? new double[]{0.4, 3.5} : new double[]{0.01, 0.03}).verdict
+                == ReadingCheck.Verdict.ROUGH, "a bump at 40 s (peak 3.5 rad/s) makes it rough");
+        check(run(1.2, warm, s -> s >= 30 && s < 35 ? new double[]{0.2, 0.4} : new double[]{0.01, 0.03}).verdict
+                == ReadingCheck.Verdict.ROUGH, "moving for 5 s makes it rough");
+        check(run(1.2, warm, s -> s >= 20 && s < 45 ? new double[]{0.2, 0.4} : new double[]{0.01, 0.03}).verdict
+                == ReadingCheck.Verdict.REDO, "moving for 25 s asks for a redo");
+        check(run(0, s -> 28.0, still).verdict == ReadingCheck.Verdict.REDO, "no warming (not on a forehead) asks for a redo");
+        check(run(1.2, s -> s < 50 ? warm.applyAsDouble(s) : warm.applyAsDouble(50) - 0.4 * (s - 50) / 10, still).verdict
+                == ReadingCheck.Verdict.REDO, "falling 0.4 °C after 50 s (lifted off) asks for a redo");
+        check(run(1.2, warm, still).orRough("still warming").verdict == ReadingCheck.Verdict.ROUGH, "a phone still warming by itself makes a good run rough");
+    }
+
+    /** A 36 s, 25 Hz barometer trace (hPa) at 1013 hPa with 1.6 Pa noise and 3 Pa/min drift, plus pulses {t, Pa, width s}. */
+    static double[][] baro(double[][] pulses, long seed) {
+        Random r = new Random(seed);
+        int n = 36 * 25;
+        double[] t = new double[n], hpa = new double[n];
+        for (int i = 0; i < n; i++) {
+            t[i] = i / 25.0;
+            double pa = 101300 + 3 * t[i] / 60 + 1.6 * r.nextGaussian();
+            for (double[] q : pulses) {
+                double d = t[i] - q[0];
+                if (q[2] > 1) {
+                    if (d >= 0 && d < q[2]) pa += q[1];   // a press: flat for as long as it lasts
+                } else {
+                    pa += q[1] * Math.exp(-d * d / (2 * q[2] * q[2] / 9));         // the blow
+                    pa -= 0.4 * q[1] * Math.exp(-(d - q[2]) * (d - q[2]) / (2 * 0.04));   // the glass springing back
+                }
+            }
+            hpa[i] = pa / 100;
+        }
+        return new double[][]{t, hpa};
+    }
+
+    static void blows() {
+        System.out.println("BlowDetector");
+        double[][] s = baro(new double[][]{{4, 50, 0.5}, {13, 55, 0.5}, {22, 52, 0.5}, {31, 48, 0.5}, {17, 1200, 2.0}}, 7);
+        BlowDetector.Summary sum = BlowDetector.analyze(s[0], s[1]);
+        check(sum.blows().size() == 4, "finds the four blows (got " + sum.blows().size() + ")");
+        check(sum.touches() == 1, "leaves out the 1,200 Pa finger press");
+        check(Math.abs(sum.strengthPa - (55 + 52 + 50) / 3.0) < 4, String.format(Locale.US, "strength is the top-3 mean, ~52 Pa (got %.1f)", sum.strengthPa));
+        check(sum.quality == BlowDetector.Quality.GOOD, "even blows are consistent (" + sum.quality + ")");
+        double[][] few = baro(new double[][]{{4, 50, 0.5}, {13, 55, 0.5}}, 8);
+        check(BlowDetector.analyze(few[0], few[1]).quality == BlowDetector.Quality.TOO_FEW, "two blows are too few");
+        double[][] quiet = baro(new double[][]{}, 9);
+        check(BlowDetector.analyze(quiet[0], quiet[1]).events.isEmpty(), "noise and drift alone give no blows");
+        double[][] uneven = baro(new double[][]{{4, 15, 0.5}, {13, 60, 0.5}, {22, 110, 0.5}}, 10);
+        check(BlowDetector.analyze(uneven[0], uneven[1]).quality == BlowDetector.Quality.INCONSISTENT, "15, 60 and 110 Pa are inconsistent");
+        check(Double.isNaN(BlowDetector.baseline(java.util.Arrays.asList(40.0, 42.0))), "no baseline before three sessions");
+        check(BlowDetector.baseline(java.util.Arrays.asList(10.0, 12.0, 11.0, 50.0, 13.0, 12.0)) == 12.0, "baseline: median of the last five (12)");
+    }
+
+    /** Synthetic eyes at 15 fps: two 30 px eyes, iris jitter sd px, a gaze jump of amp eye widths every 3 s. {caught, jumps, false/min} */
+    static double[] gaze(EyeMetrics m, double amp, double sdPx, long seed) {
+        Random r = new Random(seed);
+        int jumps = 0, caught = 0, falseShifts = 0, until = -1;
+        boolean pending = false;
+        double pos = 0.5;
+        int n = 15 * 180;
+        for (int i = 0; i < n; i++) {
+            if (amp > 0 && i > 0 && i % 45 == 0) {
+                pos = pos == 0.5 ? 0.5 + amp : 0.5;
+                jumps++;
+                pending = true;
+                until = i + 15;
+            }
+            float[] xs = new float[478], ys = new float[478];
+            for (int eye = 0; eye < 2; eye++) {
+                double x0 = eye == 0 ? 150 : 250, y0 = 300;
+                int a = eye == 0 ? EyeMetrics.R_CORNER_A : EyeMetrics.L_CORNER_A, b = eye == 0 ? EyeMetrics.R_CORNER_B : EyeMetrics.L_CORNER_B;
+                int iris = eye == 0 ? EyeMetrics.R_IRIS : EyeMetrics.L_IRIS;
+                xs[a] = (float) (x0 + 0.3 * sdPx * r.nextGaussian());
+                ys[a] = (float) (y0 + 0.3 * sdPx * r.nextGaussian());
+                xs[b] = (float) (x0 + 30 + 0.3 * sdPx * r.nextGaussian());
+                ys[b] = (float) (y0 + 0.3 * sdPx * r.nextGaussian());
+                xs[iris] = (float) (x0 + pos * 30 + sdPx * r.nextGaussian());
+                ys[iris] = (float) (y0 + sdPx * r.nextGaussian());
+            }
+            m.update(i * 1000L / 15, xs, ys, 0.05);
+            if (m.shiftEvent) {
+                if (pending && i <= until) {
+                    caught++;
+                    pending = false;
+                } else {
+                    falseShifts++;
+                }
+            }
+            if (i > until) pending = false;
+        }
+        return new double[]{caught, jumps, falseShifts / 3.0};
+    }
+
+    static void eyes() {
+        System.out.println("EyeMetrics / EyeLog");
+        double[] old = gaze(new EyeMetrics(15, EyeMetrics.SHIFT_THRESHOLD, 2.2), 0.08, 0.5, 1);
+        double[] adapt = gaze(new EyeMetrics(15), 0.08, 0.5, 1);
+        check(old[0] == 0, String.format(Locale.US, "the old fixed threshold misses 12° moves (%.0f of %.0f)", old[0], old[1]));
+        check(adapt[0] >= 0.9 * adapt[1], String.format(Locale.US, "the adaptive one catches them (%.0f of %.0f)", adapt[0], adapt[1]));
+        check(gaze(new EyeMetrics(15), 0, 0.5, 2)[2] <= 0.4, "no false shifts on a still gaze (0.5 px jitter)");
+        check(gaze(new EyeMetrics(15), 0, 1.0, 3)[2] <= 0.4, "no false shifts on a still gaze (1 px jitter)");
+        check(gaze(new EyeMetrics(15), 0, 2.5, 4)[2] <= 5, "a noisy picture (2.5 px) stays under 5 false shifts a minute");
+        try {
+            String oldCsv = "minute_start_ms,minute_end_ms,frames,face_s,paused_s,blinks,gaze_shifts,blinks_per_face_min,shifts_per_face_min,read\n"
+                    + "1000,61000,900,60.0,0.0,15,4,15.0,4.0,Learning your baseline\n";
+            String newCsv = "minute_start_ms,minute_end_ms,frames,face_s,paused_s,blinks,gaze_shifts,blinks_per_face_min,shifts_per_face_min,read,shift_threshold,jitter\n"
+                    + "61000,121000,900,30.0,0.0,10,6,20.0,12.0,Restless,0.0500,0.0080\n"
+                    + "121000,181000,900,10.0,0.0,2,1,12.0,6.0,Not enough face time,0.0500,0.0080\n";
+            java.util.List<EyeLog.Minute> a = EyeLog.parse(oldCsv), b = EyeLog.parse(newCsv);
+            check(a.size() == 1 && Double.isNaN(a.get(0).threshold) && b.size() == 2 && b.get(0).threshold == 0.05,
+                    "reads files with and without the threshold column");
+            java.util.List<EyeLog.Minute> all = new java.util.ArrayList<>(a);
+            all.addAll(b);
+            EyeLog.Day d = EyeLog.summarize(all, 1000);
+            check(d.ratedMinutes == 2 && d.restlessMinutes == 1, "rates 2 minutes (one restless); a 10 s minute isn't rated");
+            check(Math.abs(d.blinkRate - 25 * 60 / 90.0) < 1e-9 && Math.abs(d.shiftRate - 10 * 60 / 90.0) < 1e-9,
+                    "day rates are weighted by face time (16.7 blinks, 6.7 shifts a minute)");
+            check(EyeLog.recentShiftRates(all, 10, 0).equals(java.util.Collections.singletonList(12.0)),
+                    "the baseline takes only minutes from the adaptive detector");
+        } catch (java.io.IOException e) {
+            check(false, "parses minute files: " + e);
+        }
+    }
+
+    /**
+     * A day at 1 Hz: alt(s) metres, walking(s) true when stepping (1.6 steps a second), 1.6 Pa barometer noise, and
+     * pressure drift of driftHpaPerHour. Returns {up, down} after everything is processed.
+     */
+    static int[] climb(int seconds, java.util.function.IntToDoubleFunction alt, java.util.function.IntPredicate walking,
+                       double driftHpaPerHour, long seed) {
+        Random r = new Random(seed);
+        FloorCounter f = new FloorCounter();
+        long t0 = 1_000_000;
+        for (int s = 0; s < seconds; s++) {
+            long t = t0 + s * 1000L;
+            if (walking.test(s)) {
+                f.step(t);
+                if (s % 3 != 0) f.step(t + 600);   // ~1.6 steps a second
+            }
+            double hpa = 1013.25 * Math.pow(1 - alt.applyAsDouble(s) / 44330.0, 5.255) - driftHpaPerHour * s / 3600 + 0.016 * r.nextGaussian();
+            f.pressure(t, hpa);
+            f.flush(t);
+        }
+        f.flushAll();
+        return new int[]{f.up, f.down};
+    }
+
+    static void floors() {
+        System.out.println("FloorCounter");
+        // Stand a minute, climb 9.3 m in 45 s (3 flights), stand a minute.
+        int[] stairs = climb(165, s -> s < 60 ? 0 : s < 105 ? 9.3 * (s - 60) / 45 : 9.3, s -> s >= 60 && s < 105, 0, 1);
+        check(stairs[0] == 3 && stairs[1] == 0, "three flights of stairs count 3 up (got " + stairs[0] + " up, " + stairs[1] + " down)");
+        // Walk in, ride 12 m up in 20 s standing still, walk out on the flat.
+        int[] lift = climb(140, s -> s < 40 ? 0 : s < 60 ? 12.0 * (s - 40) / 20 : 12, s -> s < 40 || s >= 70, 0, 2);
+        check(lift[0] == 0, "an elevator ride counts nothing (got " + lift[0] + ")");
+        // Two hours of weather (pressure falling 0.75 hPa an hour: ~6 m apparent rise), walking 10 min in every 30.
+        int[] weather = climb(7200, s -> 0, s -> s % 1800 < 600, 0.75, 3);
+        check(weather[0] == 0 && weather[1] == 0, "two hours of weather drift with walks count nothing (got " + weather[0] + ")");
+        // Walking on the flat when a door opens: a 2.5 m step in apparent altitude that stays.
+        int[] door = climb(180, s -> s < 90 ? 0 : 2.5, s -> true, 0, 4);
+        check(door[0] == 0 && door[1] == 0, "a door's pressure jump while walking counts nothing");
+        int[] downstairs = climb(165, s -> s < 60 ? 6.2 : s < 95 ? 6.2 - 6.2 * (s - 60) / 35 : 0, s -> s >= 60 && s < 95, 0, 5);
+        check(downstairs[0] == 0 && downstairs[1] == 2, "two flights down count 2 down, 0 up");
+        int[] hill = climb(300, s -> 6.5 * s / 300.0, s -> true, 0, 6);
+        check(hill[0] == 2, "a 6.5 m hill walked up counts 2 flights, as Apple Health does (got " + hill[0] + ")");
+        FloorCounter lag = new FloorCounter();
+        for (int s = 0; s < 60; s++) {
+            lag.step(s * 1000L);
+            lag.step(s * 1000L + 500);
+            lag.pressure(s * 1000L, 1013.25 * Math.pow(1 - (s < 10 ? 0 : 3.2 * Math.min(1, (s - 10) / 20.0)) / 44330.0, 5.255));
+        }
+        int early = lag.flush(59_000);
+        int late = lag.flushAll();
+        check(early == 0 && late == 1, "readings wait 40 s for their steps, then count");
     }
 }

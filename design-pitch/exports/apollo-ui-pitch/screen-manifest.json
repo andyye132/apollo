@@ -1,0 +1,289 @@
+[
+  {
+    "id": "welcome",
+    "title": "Welcome",
+    "group": "start",
+    "note": "Apollo carries the brand in a generous opening moment. The waving pose doubles as the app icon.",
+    "expression": "hello"
+  },
+  {
+    "id": "privacy",
+    "title": "Privacy introduction",
+    "group": "start",
+    "note": "Matches the local-first architecture. Network access is isolated to the proposed companion experience.",
+    "expression": "calm"
+  },
+  {
+    "id": "profile",
+    "title": "Make it yours",
+    "group": "start",
+    "note": "Proposed onboarding collects only a name and preferences, without requiring a health profile or account.",
+    "expression": "curious"
+  },
+  {
+    "id": "permissions",
+    "title": "Permission choices",
+    "group": "start",
+    "note": "Each permission has a specific purpose. The camera request occurs at the beginning of the heart-rate flow.",
+    "expression": "curious"
+  },
+  {
+    "id": "today",
+    "title": "Today / home",
+    "group": "daily",
+    "note": "A data-first home: latest reading, quality, timestamp, activity, and a clear measurement action. No floating mascot.",
+    "expression": "hello"
+  },
+  {
+    "id": "measure",
+    "title": "Measurement hub",
+    "group": "daily",
+    "note": "The primary combined check-in solves the exam-order problem. Individual exams remain available.",
+    "expression": "curious"
+  },
+  {
+    "id": "activity",
+    "title": "Activity detail",
+    "group": "daily",
+    "note": "The current prototype\u2019s counters are session/day-baseline limited. The UI does not present them as complete imported activity history.",
+    "expression": "hello"
+  },
+  {
+    "id": "journal",
+    "title": "Journal",
+    "group": "daily",
+    "note": "Proposed v1 journal. The character appears inside an invitation, rather than covering app content.",
+    "expression": "hello"
+  },
+  {
+    "id": "journal-new",
+    "title": "Journal composer",
+    "group": "daily",
+    "note": "Mood, text, and tags use lightweight input controls. In this pitch, saving demonstrates the confirmation state.",
+    "expression": "curious"
+  },
+  {
+    "id": "trends",
+    "title": "Trends overview",
+    "group": "daily",
+    "note": "Proposed v1 trend screen. Chart ranges are personal history, not diagnostic thresholds.",
+    "expression": "thinking"
+  },
+  {
+    "id": "heart-detail",
+    "title": "Heart-rate history",
+    "group": "daily",
+    "note": "A detail drilldown keeps provenance, timestamps, and signal quality close to the values.",
+    "expression": "thinking"
+  },
+  {
+    "id": "companion",
+    "title": "Apollo conversation",
+    "group": "daily",
+    "note": "Companion is a dedicated surface reached through contextual links. No persistent bottom-right mascot.",
+    "expression": "hello"
+  },
+  {
+    "id": "temp-intro",
+    "title": "Temperature / introduction",
+    "group": "temperature",
+    "note": "Maps to FeverActivity.showIntro: 60-second pre-hold and 90-second screen-to-forehead contact.",
+    "expression": "curious"
+  },
+  {
+    "id": "temp-ready",
+    "title": "Phone readiness",
+    "group": "temperature",
+    "note": "Readiness reflects ThermalMonitor: drift, temperature, charging/power changes, and recent torch use.",
+    "expression": "curious"
+  },
+  {
+    "id": "temp-cooling",
+    "title": "Cooling / blocked state",
+    "group": "temperature",
+    "note": "Blocked until ThermalMonitor actually reports READY. This approximate cooldown is example UI, not a promise of readiness after a fixed timer.",
+    "expression": "calm"
+  },
+  {
+    "id": "temp-prehold",
+    "title": "60-second preparation",
+    "group": "temperature",
+    "note": "PREHOLD state: exactly 60 seconds. The preview step is a presentation control; native progression is timed.",
+    "expression": "calm"
+  },
+  {
+    "id": "temp-contact",
+    "title": "90-second forehead contact",
+    "group": "temperature",
+    "note": "The live contact screen is dark and touch-locked, matching FeverActivity. Voice and vibration carry the experience. Use the pitch arrows to preview the next state.",
+    "expression": "calm"
+  },
+  {
+    "id": "temp-analysis",
+    "title": "Temperature / analysis",
+    "group": "temperature",
+    "note": "ANALYZING state follows capture. Illustration stays quiet; no fabricated live temperature value.",
+    "expression": "thinking"
+  },
+  {
+    "id": "temp-result",
+    "title": "Temperature / result",
+    "group": "temperature",
+    "note": "Matches FeverAnalysis.correctedCPerMin. There is no fabricated 36.8 \u00b0C phone estimate.",
+    "expression": "happy"
+  },
+  {
+    "id": "temp-reference",
+    "title": "Thermometer reference",
+    "group": "temperature",
+    "note": "Maps to the optional ref_c field. This illustrative 36.8 \u00b0C is explicitly external, not a phone-derived body temperature.",
+    "expression": "curious"
+  },
+  {
+    "id": "temp-unreliable",
+    "title": "Temperature / unreliable",
+    "group": "temperature",
+    "note": "An unreliable research session stays clearly labeled; no large result is shown as trustworthy.",
+    "expression": "encouraging"
+  },
+  {
+    "id": "hr-intro",
+    "title": "Heart rate / introduction",
+    "group": "heart",
+    "note": "Matches HeartRateActivity: camera + flash, light pressure, full coverage, and 20 seconds of steady capture.",
+    "expression": "curious"
+  },
+  {
+    "id": "temp-first",
+    "title": "Temperature-first prompt",
+    "group": "heart",
+    "note": "Preserves the existing maybeTemperatureFirst choice in a calmer bottom sheet.",
+    "expression": "thinking"
+  },
+  {
+    "id": "camera-permission",
+    "title": "Camera permission",
+    "group": "heart",
+    "note": "Shows when the OS permission should appear. Native Android renders the real system dialog.",
+    "expression": "curious"
+  },
+  {
+    "id": "hr-coverage",
+    "title": "Finger placement",
+    "group": "heart",
+    "note": "Based on CoverageView\u2019s tiled coverage and directional hints. Uncovered areas get a non-color-only label.",
+    "expression": "thinking"
+  },
+  {
+    "id": "hr-settling",
+    "title": "Signal settling",
+    "group": "heart",
+    "note": "SETTLING is distinct from camera coverage. The real camera waits for a stable, locked exposure before capture.",
+    "expression": "calm"
+  },
+  {
+    "id": "hr-recording",
+    "title": "20-second heart-rate capture",
+    "group": "heart",
+    "note": "20-second capture uses an optical PPG waveform, not an ECG illustration. BPM appears only after analysis.",
+    "expression": "calm"
+  },
+  {
+    "id": "hr-analysis",
+    "title": "Heart rate / analysis",
+    "group": "heart",
+    "note": "Camera and flash are stopped before analysis. The phone then enters the thermal cooldown window.",
+    "expression": "thinking"
+  },
+  {
+    "id": "hr-result",
+    "title": "Heart rate / result",
+    "group": "heart",
+    "note": "The successful report keeps signal quality and measurement context prominent. No diagnostic label or fabricated normal range.",
+    "expression": "happy"
+  },
+  {
+    "id": "hr-weak",
+    "title": "Weak signal / retry",
+    "group": "heart",
+    "note": "Matches the POOR verdict in HeartRateActivity: never show an unreliable BPM number large.",
+    "expression": "encouraging"
+  },
+  {
+    "id": "hr-reference",
+    "title": "Watch comparison",
+    "group": "heart",
+    "note": "Matches ref_bpm entry. The prototype supports manually comparing the camera estimate with a Fitbit.",
+    "expression": "curious"
+  },
+  {
+    "id": "today-empty",
+    "title": "Today / first reading",
+    "group": "care",
+    "note": "An empty home does not fabricate health values. Apollo makes the first step approachable.",
+    "expression": "hello"
+  },
+  {
+    "id": "offline",
+    "title": "Companion / offline",
+    "group": "care",
+    "note": "Reflects the design\u2019s network boundary: chat needs connectivity; local health features remain usable.",
+    "expression": "calm"
+  },
+  {
+    "id": "unsupported",
+    "title": "Temperature unavailable",
+    "group": "care",
+    "note": "UNSUPPORTED sensor/setup state. Technical setup stays in device details, away from the everyday measurement journey.",
+    "expression": "encouraging"
+  },
+  {
+    "id": "camera-denied",
+    "title": "Camera access denied",
+    "group": "care",
+    "note": "Permission denial has a clear route to settings and a route back to the rest of the app.",
+    "expression": "calm"
+  },
+  {
+    "id": "interrupted",
+    "title": "Exam interrupted",
+    "group": "care",
+    "note": "Represents onPause and Back cancellation in both activities, without claiming an incomplete capture is a valid result.",
+    "expression": "encouraging"
+  },
+  {
+    "id": "journal-saved",
+    "title": "Journal / saved",
+    "group": "care",
+    "note": "Proposed local-save confirmation. All data in this pitch is illustrative; the design does not write to the native app.",
+    "expression": "happy"
+  },
+  {
+    "id": "settings",
+    "title": "Settings",
+    "group": "settings",
+    "note": "Proposed settings entry point. Detailed raw logs and development configuration remain outside normal exam screens.",
+    "expression": "hello"
+  },
+  {
+    "id": "data-privacy",
+    "title": "Privacy & data",
+    "group": "settings",
+    "note": "Data deletion is gated behind a dedicated confirmation screen. This mockup never touches native data.",
+    "expression": "calm"
+  },
+  {
+    "id": "export",
+    "title": "Export data",
+    "group": "settings",
+    "note": "Proposed export UI. The demonstration download is clearly labeled and contains only synthetic data.",
+    "expression": "curious"
+  },
+  {
+    "id": "delete-confirm",
+    "title": "Delete confirmation",
+    "group": "settings",
+    "note": "Explicit destructive-action confirmation, with keeping data as the primary action.",
+    "expression": "calm"
+  }
+]

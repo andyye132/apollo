@@ -51,6 +51,12 @@ import java.util.Locale;
  */
 public class MainActivity extends Activity implements SensorEventListener, CarePage.Host, ChatPage.Host {
     private static final int TODAY = 0, CARE = 1, APOLLO = 2;
+    // The check-in runs every test once, temperature first (the heart-rate flash warms the phone).
+    private static final String[] STEPS = {"Temperature", "Heart rate", "Calm sensing", "Breath strength"};
+    private static final Class<?>[] STEP_SCREENS = {FeverActivity.class, HeartRateActivity.class, CalmSenseActivity.class, BreathActivity.class};
+    private static final String[] STEP_HINTS = {"90 s with the screen on your forehead", "a 20-second fingertip check",
+            "a minute of sonar while you hold the phone", "four hard blows at the screen"};
+    private static final int REQ_STEP = 40;   // + step index
     private static final String[] TABS = {"Today", "Care", "Apollo"};
     private static final String[] TAB_ICONS = {"home", "care", null};   // Apollo's is his face
     private static final int STEP_GOAL = 10_000;
@@ -64,7 +70,6 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
     private final List<TextView> navLabels = new ArrayList<>();
     private int tab, trendRange = 0, statusTop, navInset;
     private String sub;   // a page inside the tab: "trends" (Today) or "cat:<id>" (Care); null = the tab itself
-    private double basePressure = Double.NaN, pressure = Double.NaN;
     private long stepsToday = -1;
     private CarePage care;
     private ChatPage chat;
@@ -72,8 +77,11 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
     private int keepScroll = -1;
 
     // Live views on the current page (null when it isn't showing)
-    private TextView stepsText, stepsCaption, baroText, baroCaption, phoneText, phoneCaption, tempStatus, watchStatus,
-            checkInBadge, checkInText;
+    private TextView stepsText, stepsCaption, floorsText, floorsCaption, phoneText, phoneCaption, tempStatus, watchStatus,
+            checkInBadge, checkInText, eyeBlinks, eyeShifts, eyeRead, eyeStatus;
+    private LinearLayout eyeSlot;       // holds the Start/Stop button
+    private Boolean eyeButtonRunning;   // which one it holds now
+    private EyeLog.Day eyeToday;        // today's saved minutes, for the card while tracking is off
     private Ui.Bar stepsBar;
 
     private final Runnable tick = new Runnable() {
@@ -154,9 +162,11 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
         super.onResume();
         monitor.acquire();
         Sensor steps = sensors.getDefaultSensor(Sensor.TYPE_STEP_COUNTER);
-        Sensor baro = sensors.getDefaultSensor(Sensor.TYPE_PRESSURE);
         if (steps != null) sensors.registerListener(this, steps, SensorManager.SENSOR_DELAY_NORMAL);
-        if (baro != null) sensors.registerListener(this, baro, SensorManager.SENSOR_DELAY_NORMAL);
+        AllDayService.start(this);   // steps and flights climbed, all day, in the background
+        // Eye tracking the user left on: Android only lets a camera service start while the app is visible, so this is
+        // where it comes back after a reboot or a crash (the camera permission has to still be on).
+        if (EyeState.wanted(this) && !EyeState.running && EyeState.hasCamera(this)) EyeState.start(this);
         if (tab != APOLLO) render();   // results may have changed on another screen (the chat keeps its place)
         ui.post(tick);
         // The watch is the reference: reconnect to it automatically unless the user chose Disconnect.
@@ -189,11 +199,16 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
     @Override
     public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
         boolean granted = results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED;
-        if (code == CarePage.REQ_LOCATION) {
+        if (code == REQ_EYE_CAMERA) {
+            if (granted) startEyes();
+        } else if (code == REQ_EYE_NOTIFY) {
+            startEyes();   // the notification is optional for the service to run, so go on either way
+        } else if (code == CarePage.REQ_LOCATION) {
             care.locationResult(granted);
         } else if (granted) {
             Sensor steps = sensors.getDefaultSensor(Sensor.TYPE_STEP_COUNTER);
             if (steps != null) sensors.registerListener(this, steps, SensorManager.SENSOR_DELAY_NORMAL);
+            AllDayService.start(this);
         }
     }
 
@@ -253,7 +268,7 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
             if (navIcons.get(i) != null) navIcons.get(i).setColor(color);
             navLabels.get(i).setTextColor(color);
         }
-        stepsText = stepsCaption = baroText = baroCaption = phoneText = phoneCaption = tempStatus = watchStatus = null;
+        stepsText = stepsCaption = floorsText = floorsCaption = phoneText = phoneCaption = tempStatus = watchStatus = null;
         checkInBadge = checkInText = null;
         stepsBar = null;
         LinearLayout col = pageColumn();
@@ -268,6 +283,8 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
             chat.build(col, s);
         } else if ("trends".equals(sub)) {
             trends(col);
+        } else if ("eyes".equals(sub)) {
+            eyes(col);
         } else {
             today(col);
         }
@@ -281,7 +298,7 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
         }
         updateLive();
         showSteps();
-        showBaro();
+        showFloors();
     }
 
     /** CarePage.Host: re-render in place (filters and toggles keep the scroll position). */
@@ -316,7 +333,8 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
             render();
         } else {
             Class<?> screen = "temp".equals(action) ? FeverActivity.class : "hr".equals(action) ? HeartRateActivity.class
-                    : "calibrate".equals(action) ? CalibrateActivity.class : "calm".equals(action) ? CalmSenseActivity.class : null;
+                    : "calibrate".equals(action) ? CalibrateActivity.class : "calm".equals(action) ? CalmSenseActivity.class
+                    : "breath".equals(action) ? BreathActivity.class : null;
             if (screen != null) startActivity(new Intent(this, screen));
         }
     }
@@ -374,7 +392,7 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
         head.addView(gear, gl);
         Ui.add(col, Ui.text(this, greeting() + " Here's your day.", 15, Ui.MUTED, false), 6);
 
-        // ---- Tests you take: nothing happens until you start one.
+        // ---- Tests you take: the check-in runs all four in a row; the tiles start one on its own.
         sectionHead(col, "Tests you take", "Quick checks you start yourself. A minute or two each.", 26);
 
         LinearLayout check = Ui.add(col, Ui.card(this), 14);
@@ -387,8 +405,20 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
         bl.leftMargin = Ui.dp(this, 10);
         titleRow.addView(checkInBadge, bl);
         checkInText = Ui.add(checkText, Ui.text(this, "", 14.5f, Ui.MUTED, false), 8);
+        LinearLayout progress = Ui.add(checkText, Ui.row(this), 10);   // one dot per test: done today, or not yet
+        int next = nextStep();
+        for (int i = 0; i < STEPS.length; i++) {
+            View dot = new View(this);
+            dot.setBackground(Ui.rounded(stepDone(i) ? Ui.GOOD : i == next ? Ui.CORAL : Ui.LINE, Ui.dp(this, 4)));
+            LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(0, Ui.dp(this, 6), 1);
+            if (i > 0) dl.leftMargin = Ui.dp(this, 5);
+            progress.addView(dot, dl);
+        }
+        Ui.add(checkText, Ui.text(this, next < 0 ? "All 4 done today" : stepsDone() + " of 4 done · next: " + STEPS[next],
+                12.5f, Ui.MUTED, false), 6);
         LinearLayout go = Ui.add(checkText, Ui.row(this), 12);
-        go.addView(Ui.styled(this, "Start check-in", 15, Ui.CORAL_DARK, 600));
+        go.addView(Ui.styled(this, next < 0 ? "See your trends" : stepsDone() == 0 ? "Start check-in" : "Continue: " + STEPS[next],
+                15, Ui.CORAL_DARK, 600));
         View arrow = Ui.icon(this, "arrow", Ui.CORAL_DARK, 17);
         ((LinearLayout.LayoutParams) arrow.getLayoutParams()).leftMargin = Ui.dp(this, 6);
         go.addView(arrow);
@@ -396,7 +426,14 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
         View face = Ui.mascot(this, "hello", 84);   // straight on the card's white
         ((LinearLayout.LayoutParams) face.getLayoutParams()).leftMargin = Ui.dp(this, 10);
         checkRow.addView(face);
-        Ui.tappable(check, v -> startActivity(new Intent(this, FeverActivity.class)));
+        Ui.tappable(check, v -> {
+            int n = nextStep();
+            if (n >= 0) startStep(n);
+            else {
+                sub = "trends";
+                render();
+            }
+        });
 
         LinearLayout tests = Ui.add(col, Ui.row(this), 12);
         tests.setBaselineAligned(false);
@@ -428,7 +465,33 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
             Ui.add(heart, Ui.text(this, ("GOOD".equals(last.optString("verdict")) ? "Good signal · " : "Weak signal · ")
                     + clock(last.optLong("id")), 13, Ui.MUTED, false), 6);
         }
-        Ui.add(col, Ui.text(this, "Taking both? Start with temperature: the camera flash warms the phone.", 13, Ui.MUTED, false), 12);
+
+        LinearLayout tests2 = Ui.add(col, Ui.row(this), 12);
+        tests2.setBaselineAligned(false);
+        tests2.setGravity(Gravity.TOP);
+        List<JSONObject> calm = Store.history(this, "calm");
+        LinearLayout calmTile = testTile(tests2, "moon", "Calm sensing", 0, v -> startActivity(new Intent(this, CalmSenseActivity.class)));
+        if (calm.isEmpty()) {
+            Ui.add(calmTile, Ui.styled(this, "Not yet", 24, Ui.TEXT, 600), 6);
+            Ui.add(calmTile, Ui.text(this, "About a minute", 13, Ui.MUTED, false), 10);
+        } else {
+            JSONObject last = calm.get(0);
+            int msgs = last.optInt("interventions");
+            Ui.add(calmTile, reading(msgs == 0 ? "Calm" : String.valueOf(msgs), msgs == 0 ? "" : msgs == 1 ? "nudge" : "nudges", msgs == 0 ? 24 : 32), 6);
+            Ui.add(calmTile, Ui.text(this, String.format(Locale.US, "%.0f min · %s", last.optDouble("duration_s") / 60,
+                    clock(last.optLong("id"))), 13, Ui.MUTED, false), 6);
+        }
+        List<JSONObject> breaths = Store.history(this, "breath");
+        LinearLayout breathTile = testTile(tests2, "waves", "Breath strength", 12, v -> startActivity(new Intent(this, BreathActivity.class)));
+        JSONObject lastBreath = breaths.isEmpty() ? null : breaths.get(0);
+        if (lastBreath == null || !lastBreath.has("strength_pa")) {
+            Ui.add(breathTile, Ui.styled(this, "Not yet", 24, Ui.TEXT, 600), 6);
+        } else if (lastBreath.has("percent_of_baseline")) {
+            Ui.add(breathTile, reading(String.valueOf(lastBreath.optInt("percent_of_baseline")), "% of usual", 32), 6);
+        } else {
+            Ui.add(breathTile, reading(String.format(Locale.US, "%.0f", lastBreath.optDouble("strength_pa")), "Pa", 32), 6);
+        }
+        Ui.add(breathTile, Ui.text(this, breathLine(), 13, Ui.MUTED, false), lastBreath == null ? 10 : 6);
 
         // ---- All day: measured in the background, nothing to start.
         LinearLayout panel = Ui.add(col, Ui.column(this), 30);
@@ -452,9 +515,9 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
         pair.setBaselineAligned(false);
         pair.setGravity(Gravity.TOP);
         LinearLayout elev = Ui.card(this);
-        cardTop(elev, "layers", Ui.LEAF_DARK, "Elevation", null);
-        baroText = Ui.add(elev, Ui.number(this, "–", 26), 8);
-        baroCaption = Ui.add(elev, Ui.text(this, "Since this screen opened", 12.5f, Ui.MUTED, false), 4);
+        cardTop(elev, "layers", Ui.LEAF_DARK, "Floors climbed", null);
+        floorsText = Ui.add(elev, Ui.number(this, "0", 26), 8);
+        floorsCaption = Ui.add(elev, Ui.text(this, "Today, on foot", 12.5f, Ui.MUTED, false), 4);
         pair.addView(elev, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
         LinearLayout warm = Ui.card(this);
         cardTop(warm, "thermo", Ui.LEAF_DARK, "Phone warmth", null);
@@ -464,23 +527,75 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
         wl.leftMargin = Ui.dp(this, 12);
         pair.addView(warm, wl);
 
+        eyeCard(panel);
+
         watchStatus = panelRow(panel, "watch", "Reference watch", "", v -> startActivity(new Intent(this, WatchActivity.class)));
         panelRow(panel, "trends", "Your trends", "Heart rate, temperature and steps over time", v -> {
             sub = "trends";
             render();
         });
 
-        // ---- Extras
-        sectionHead(col, "More to try", "Setup and the research experiments.", 30);
+        // ---- Setup
+        sectionHead(col, "Setup", "Calibration runs with a thermometer, for the temperature model.", 30);
         int runs = Store.history(this, "calibration").size();
         extraTile(col, "plus", Ui.CORAL, "Calibrate temperature", runs == 0 ? "Teach Apollo how your forehead warms the phone"
                 : runs + " run" + (runs == 1 ? "" : "s") + " saved · forehead runs and controls", CalibrateActivity.class);
-        extraTile(col, "waves", Ui.LEAF, "Calm sensing", "Inaudible sonar notices agitation and suggests a breath · RageSense",
-                CalmSenseActivity.class);
-        extraTile(col, "play", Ui.LEAF, "Ball rescue", "Your hands on the screen become sand · Magical Touch", TouchLabActivity.class);
 
         Ui.add(col, Ui.text(this, "Research prototype, not a medical device. Everything stays on this phone.", 12, Ui.FAINT, false), 22)
                 .setGravity(Gravity.CENTER);
+    }
+
+    /** The breath tile's line: when, or how far the baseline has got. */
+    private String breathLine() {
+        List<JSONObject> b = Store.history(this, "breath");
+        int counted = 0;
+        for (JSONObject o : b) if (o.optBoolean("added_to_baseline")) counted++;
+        if (b.isEmpty()) return "About 40 s";
+        if (counted < BlowDetector.MIN_FOR_BASELINE) return "Baseline " + counted + " of " + BlowDetector.MIN_FOR_BASELINE;
+        return clock(b.get(0).optLong("id"));
+    }
+
+    // ---- The check-in: every test once, in order ------------------------------------------------
+
+    /** Whether step i has a usable result from today. */
+    private boolean stepDone(int i) {
+        String type = i == 0 ? "forehead" : i == 1 ? "heart_rate" : i == 2 ? "calm" : "breath";
+        for (JSONObject o : Store.history(this, type)) {
+            if (!isToday(o.optLong("id"))) break;   // newest first
+            boolean ok = i == 0 ? o.optDouble("core_c_est", -1) > 0
+                    : i == 1 ? !"POOR".equals(o.optString("verdict"))
+                    : i == 2 || "GOOD".equals(o.optString("quality")) || "OK".equals(o.optString("quality"));
+            if (ok) return true;
+        }
+        return false;
+    }
+
+    private int stepsDone() {
+        int n = 0;
+        for (int i = 0; i < STEPS.length; i++) if (stepDone(i)) n++;
+        return n;
+    }
+
+    /** The first step not done today, or -1 when all are. */
+    private int nextStep() {
+        for (int i = 0; i < STEPS.length; i++) if (!stepDone(i)) return i;
+        return -1;
+    }
+
+    private void startStep(int i) {
+        android.widget.Toast.makeText(this, String.format(Locale.US, "Check-in %d of %d: %s", i + 1, STEPS.length, STEPS[i]),
+                android.widget.Toast.LENGTH_SHORT).show();
+        startActivityForResult(new Intent(this, STEP_SCREENS[i]).putExtra("checkin", true), REQ_STEP + i);
+    }
+
+    /** A step's screen closed: if it got a result, go straight on to the next one; if not, the chain stops here. */
+    @Override
+    protected void onActivityResult(int code, int result, Intent data) {
+        super.onActivityResult(code, result, data);
+        int i = code - REQ_STEP;
+        if (i < 0 || i >= STEPS.length || !stepDone(i)) return;
+        int n = nextStep();
+        if (n >= 0) startStep(n);
     }
 
     /** A test tile (half width): icon, name, then the latest result is added by the caller. */
@@ -510,6 +625,216 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
         tile.addView(text, lp);
         tile.addView(Ui.chevron(this));
         return d;
+    }
+
+    /**
+     * Passive eye tracking: blinks and gaze shifts per minute from the front camera, kept running by a foreground
+     * service (Android shows its green camera dot and a notification while it runs). Start and Stop live here.
+     */
+    private void eyeCard(LinearLayout panel) {
+        LinearLayout card = Ui.add(panel, Ui.card(this), 12);
+        cardTop(card, "eye", Ui.LEAF_DARK, "Eyes", null);
+        LinearLayout nums = Ui.add(card, Ui.row(this), 10);
+        nums.setGravity(Gravity.TOP);
+        LinearLayout blinks = Ui.column(this), shifts = Ui.column(this);
+        eyeBlinks = Ui.add(blinks, Ui.number(this, "–", 26), 0);
+        Ui.add(blinks, Ui.text(this, "Blinks per minute", 12.5f, Ui.MUTED, false), 2);
+        eyeShifts = Ui.add(shifts, Ui.number(this, "–", 26), 0);
+        Ui.add(shifts, Ui.text(this, "Gaze shifts per minute", 12.5f, Ui.MUTED, false), 2);
+        nums.addView(blinks, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        nums.addView(shifts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        eyeRead = Ui.add(card, Ui.styled(this, "", 14.5f, Ui.MUTED, 600), 12);
+        eyeStatus = Ui.add(card, Ui.text(this, "", 12.5f, Ui.MUTED, false), 4);
+        eyeSlot = Ui.add(card, Ui.column(this), 14);
+        eyeButtonRunning = null;
+        long now = System.currentTimeMillis();
+        eyeToday = EyeLog.summarize(EyeLog.on(EyeLog.load(Store.dir(this)), now), now);
+        TextView more = Ui.add(card, Ui.styled(this, "See your eye history  ›", 14.5f, Ui.CORAL_DARK, 600), 12);
+        more.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 4));
+        more.setOnClickListener(v -> {
+            sub = "eyes";
+            render();
+        });
+        Ui.add(card, Ui.text(this, "Only blink and gaze counts are kept, never pictures. While it runs, Android shows a green "
+                + "camera dot and a notification. Exploratory: it shows whether your eyes are busier than your own usual, "
+                + "not a diagnosis.", 12, Ui.FAINT, false), 10);
+        updateEyes();
+    }
+
+    private void updateEyes() {
+        if (eyeStatus == null) return;
+        boolean run = EyeState.running, cameraOk = EyeState.hasCamera(this);
+        boolean haveRate = run && !Double.isNaN(EyeState.blinkRate);
+        boolean saved = !run && eyeToday != null && eyeToday.ratedMinutes > 0;   // off: show today's saved averages
+        eyeBlinks.setText(haveRate ? String.format(Locale.US, "%.0f", EyeState.blinkRate)
+                : saved ? String.format(Locale.US, "%.0f", eyeToday.blinkRate) : "–");
+        eyeShifts.setText(haveRate ? String.format(Locale.US, "%.0f", EyeState.shiftRate)
+                : saved ? String.format(Locale.US, "%.0f", eyeToday.shiftRate) : "–");
+        String read = EyeState.read;
+        eyeRead.setText(saved ? String.format(Locale.US, "Today so far: %.0f min tracked, %d restless.", eyeToday.faceMinutes,
+                eyeToday.restlessMinutes)
+                : !run ? "Counts blinks and eye movement in the background to notice restless eyes."
+                : read.isEmpty() ? "First reading after a minute of face time." : read.equals("Restless")
+                ? "Restless: your eyes are busier than usual, which can mean stress or distraction." : read.equals("Settled")
+                ? "Settled: your eyes are steady." : read + ".");
+        eyeRead.setTextColor(run && read.equals("Restless") ? Ui.WARN : run && read.equals("Settled") ? Ui.GOOD : Ui.MUTED);
+        eyeStatus.setText(run ? "Camera on · " + EyeState.status
+                : !cameraOk ? "Camera access is off. Tap Start to allow it." : EyeState.status.equals("Off") ? "Off" : EyeState.status);
+        if (eyeButtonRunning == null || eyeButtonRunning != run) {
+            eyeButtonRunning = run;
+            eyeSlot.removeAllViews();
+            Ui.add(eyeSlot, run ? Ui.button(this, "Stop eye tracking", Ui.TEXT, false, v -> EyeState.stop(this))
+                    : Ui.button(this, "Start eye tracking", Ui.CORAL, true, v -> startEyes()), 0);
+        }
+    }
+
+    private static final int REQ_EYE_CAMERA = 31, REQ_EYE_NOTIFY = 32;
+
+    /** Start: needs the camera permission (asked, or sent to Settings once refused for good) and a notification. */
+    private void startEyes() {
+        if (!EyeState.hasCamera(this)) {
+            SharedPreferences p = Store.prefs(this);
+            if (p.getBoolean("eye_asked", false) && !shouldShowRequestPermissionRationale(Manifest.permission.CAMERA)) {
+                startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", getPackageName(), null)));
+            } else {
+                p.edit().putBoolean("eye_asked", true).apply();
+                requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_EYE_CAMERA);
+            }
+            return;
+        }
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                && !Store.prefs(this).getBoolean("eye_notify_asked", false)) {
+            Store.prefs(this).edit().putBoolean("eye_notify_asked", true).apply();
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_EYE_NOTIFY);
+            return;
+        }
+        EyeState.start(this);
+    }
+
+    // ---- Eyes (from All day): the saved minutes, today and this week ------------------------------
+
+    private void eyes(LinearLayout col) {
+        TextView back = Ui.add(col, Ui.styled(this, "‹  Today", 15, Ui.TEXT, 500), 0);
+        back.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 10));
+        back.setOnClickListener(v -> {
+            sub = null;
+            render();
+        });
+        Ui.add(col, Ui.label(this, "All day · Eyes"), 4);
+        Ui.add(col, Ui.title(this, "Your eyes"), 6);
+        Ui.add(col, Ui.text(this, "Blinks and gaze shifts per minute you were looking at the phone. Every minute is saved on this phone.",
+                15, Ui.MUTED, false), 6);
+
+        List<EyeLog.Minute> all = EyeLog.load(Store.dir(this));
+        long now = System.currentTimeMillis();
+        List<EyeLog.Minute> today = EyeLog.on(all, now);
+        EyeLog.Day d = EyeLog.summarize(today, now);
+
+        // Today at a glance: four numbers.
+        LinearLayout sum = Ui.add(col, Ui.card(this), 18);
+        LinearLayout st = Ui.add(sum, Ui.row(this), 0);
+        st.addView(Ui.styled(this, "Today", 16, Ui.TEXT, 600), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        st.addView(Ui.badge(this, EyeState.running ? "Tracking now" : "Off", EyeState.running ? Ui.LEAF : Ui.MUTED));
+        String[][] stats = {
+                {String.format(Locale.US, "%.0f", d.faceMinutes), "minutes tracked"},
+                {d.ratedMinutes == 0 ? "–" : String.format(Locale.US, "%.0f", d.blinkRate), "blinks per minute"},
+                {d.ratedMinutes == 0 ? "–" : String.format(Locale.US, "%.0f", d.shiftRate), "gaze shifts per minute"},
+                {String.valueOf(d.restlessMinutes), d.restlessMinutes == 1 ? "restless minute" : "restless minutes"}};
+        for (int r = 0; r < 2; r++) {
+            LinearLayout row = Ui.add(sum, Ui.row(this), r == 0 ? 12 : 14);
+            row.setGravity(Gravity.TOP);
+            for (int k = 0; k < 2; k++) {
+                LinearLayout cell = Ui.column(this);
+                cell.addView(Ui.number(this, stats[2 * r + k][0], 28));
+                Ui.add(cell, Ui.text(this, stats[2 * r + k][1], 12.5f, Ui.MUTED, false), 2);
+                row.addView(cell, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            }
+        }
+
+        // Through the day: each rated minute, with restless stretches shaded.
+        LinearLayout tl = Ui.add(col, Ui.card(this), 14);
+        cardTop(tl, "eye", Ui.LEAF_DARK, "Through the day", "per minute");
+        List<EyeLog.Minute> rated = new ArrayList<>();
+        for (EyeLog.Minute m : today) if (m.rated()) rated.add(m);
+        if (rated.size() < 2) {
+            Ui.add(tl, Ui.text(this, rated.isEmpty() ? "No tracked minutes yet today. Start eye tracking on Today and use the phone as usual."
+                    : "One tracked minute so far. The chart fills in as you use the phone.", 14, Ui.MUTED, false), 10);
+        } else {
+            LinearLayout legend = Ui.add(tl, Ui.row(this), 10);
+            legend.addView(swatch(Ui.CORAL, "Blinks"));
+            legend.addView(swatch(Ui.LEAF_DARK, "Gaze shifts"));
+            legend.addView(swatch(0x55E9B04C, "Restless"));
+            double day0 = EyeLog.dayStart(now);
+            double[] x = new double[rated.size()], yb = new double[rated.size()], ys = new double[rated.size()];
+            for (int i = 0; i < rated.size(); i++) {
+                x[i] = (rated.get(i).start - day0) / 3_600_000.0;
+                yb[i] = rated.get(i).blinkRate;
+                ys[i] = rated.get(i).shiftRate;
+            }
+            ChartView c = new ChartView(this, 170).title("", "").xUnit("h").minSpan(10);
+            for (EyeLog.Minute m : rated) {
+                if (m.restless()) c.band((m.start - day0) / 3_600_000.0, (m.end - day0) / 3_600_000.0, 0x55E9B04C, "");
+            }
+            c.add(new ChartView.Series(x, yb, Ui.CORAL, false, "blinks/min"));
+            c.add(new ChartView.Series(x, ys, Ui.LEAF_DARK, false, "shifts/min"));
+            c.add(new ChartView.Series(x, ys, Ui.LEAF_DARK, true, null));
+            Ui.add(tl, c, 8);
+            Ui.add(tl, Ui.text(this, "Hours since midnight. A minute is rated once your face was in view for 20 s of it.",
+                    12, Ui.FAINT, false), 6);
+        }
+
+        // This week: one row a day.
+        LinearLayout wk = Ui.add(col, Ui.card(this), 14);
+        cardTop(wk, "trends", Ui.LEAF_DARK, "Last 7 days", null);
+        List<EyeLog.Day> days = EyeLog.days(all, now, 7);
+        double maxShift = 1;
+        for (EyeLog.Day day : days) if (day.ratedMinutes > 0) maxShift = Math.max(maxShift, day.shiftRate);
+        boolean any = false;
+        for (int i = days.size() - 1; i >= 0; i--) {
+            EyeLog.Day day = days.get(i);
+            if (day.ratedMinutes == 0) continue;
+            any = true;
+            LinearLayout r = Ui.add(wk, Ui.row(this), 12);
+            TextView name = Ui.styled(this, i == days.size() - 1 ? "Today" : new SimpleDateFormat("EEE", Locale.US).format(new Date(day.dayStart)),
+                    14, Ui.TEXT, 600);
+            r.addView(name, new LinearLayout.LayoutParams(Ui.dp(this, 52), ViewGroup.LayoutParams.WRAP_CONTENT));
+            LinearLayout mid = Ui.column(this);
+            Ui.Bar bar = Ui.bar(this, (float) (day.shiftRate / maxShift), day.restlessMinutes > 0 ? Ui.WARN : Ui.LEAF);
+            mid.addView(bar);
+            Ui.add(mid, Ui.text(this, String.format(Locale.US, "%.0f min · %.0f blinks, %.0f shifts a minute%s", day.faceMinutes,
+                    day.blinkRate, day.shiftRate, day.restlessMinutes > 0 ? " · " + day.restlessMinutes + " restless" : ""),
+                    12, Ui.MUTED, false), 4);
+            r.addView(mid, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        }
+        if (!any) Ui.add(wk, Ui.text(this, "Nothing tracked this week yet.", 14, Ui.MUTED, false), 10);
+
+        // How sensitive the gaze-shift count is right now.
+        LinearLayout how = Ui.add(col, Ui.card(this), 14);
+        Ui.add(how, Ui.label(this, "What counts as a gaze shift"), 0);
+        double thr = !Double.isNaN(EyeState.threshold) ? EyeState.threshold : today.isEmpty() ? Double.NaN : today.get(today.size() - 1).threshold;
+        boolean measured = !Double.isNaN(thr) && thr != EyeMetrics.SHIFT_THRESHOLD;   // 0.10 is the start-up value
+        Ui.add(how, Ui.text(this, !measured
+                ? "Your eyes moving quickly by more than a set amount. For the first half minute of face time that's about 14°; "
+                + "after that Apollo measures how steadily the camera sees your eyes and lowers the cut-off to suit, to about 7° "
+                + "in good light and close up."
+                : String.format(Locale.US, "Right now: a move of about %.0f° or more within a fifth of a second (%.3f eye widths). "
+                + "Apollo sets this from how steadily the camera sees your eyes: smaller in good light and close up, larger when the "
+                + "picture is noisy.", Math.toDegrees(Math.asin(Math.min(1, thr / 0.4))), thr), 14, Ui.TEXT, false), 8);
+        Ui.add(how, Ui.text(this, "Restless: gaze shifts 1.5 times your own recent usual, or 28+ blinks a minute. Exploratory, not a diagnosis.",
+                12.5f, Ui.MUTED, false), 8);
+        Ui.add(col, Ui.text(this, "Saved as eyetrack_passive_*.csv (one row a minute) and eyetrack_frames_*.csv (every frame, the first "
+                + "10 minutes of each session) in Apollo's files folder. Only numbers, never pictures.", 12, Ui.FAINT, false), 14);
+    }
+
+    private View swatch(int color, String name) {
+        LinearLayout r = Ui.row(this);
+        View dot = new View(this);
+        dot.setBackground(Ui.rounded(color, Ui.dp(this, 5)));
+        r.addView(dot, new LinearLayout.LayoutParams(Ui.dp(this, 10), Ui.dp(this, 10)));
+        TextView t = Ui.styled(this, name, 12.5f, Ui.MUTED, 500);
+        t.setPadding(Ui.dp(this, 6), 0, Ui.dp(this, 14), 0);
+        r.addView(t);
+        return r;
     }
 
     /** "● Live" with a slowly breathing leaf dot. */
@@ -732,19 +1057,19 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
         int color = "READY".equals(v) ? Ui.GOOD : v == null || "UNSUPPORTED".equals(v) ? Ui.MUTED : Ui.WARN;
         if (tempStatus != null) Ui.setChip(tempStatus, "READY".equals(v) ? "Phone ready" : Ui.readyLabel(v), color == Ui.MUTED ? Ui.FAINT : color);
         if (checkInBadge != null) {
-            List<JSONObject> fh = Store.history(this, "forehead"), hr = Store.history(this, "heart_rate");
-            boolean tempToday = !fh.isEmpty() && isToday(fh.get(0).optLong("id"));
-            boolean hrToday = !hr.isEmpty() && isToday(hr.get(0).optLong("id"));
-            if (tempToday && hrToday) {
+            int next = nextStep();
+            if (next < 0) {
                 restyle(checkInBadge, "Done", Ui.GOOD);
-                checkInText.setText("Both check-ins are in for today. Nicely done.");
-            } else {
+                checkInText.setText("All four tests are in for today. Nicely done.");
+            } else if (next == 0) {   // temperature is next: it's the one that needs a settled phone
                 restyle(checkInBadge, Ui.readyLabel(v), color);
-                checkInText.setText(tempToday ? "Temperature is done. Next, a 20-second heart-rate check."
-                        : "READY".equals(v) ? "Your phone is still and steady: a good moment for temperature, then heart rate."
+                checkInText.setText("READY".equals(v) ? "Your phone is still and steady: a good moment to start with temperature."
                         : "TOO_WARM".equals(v) ? "Your phone is a little warm. Give it a few minutes on the table, then start."
                         : "BLOCKED".equals(v) ? "Unplug the charger first. Charging warms the phone."
-                        : "Temperature first, then heart rate. Leave the phone flat for a minute so it can settle.");
+                        : "All four tests in a row, temperature first. Leave the phone flat for a minute so it can settle.");
+            } else {
+                restyle(checkInBadge, stepsDone() + " of 4", Ui.CORAL);
+                checkInText.setText("Next: " + STEPS[next].toLowerCase(Locale.US) + ", " + STEP_HINTS[next] + ".");
             }
         }
         if (phoneText != null && !Double.isNaN(s.phoneC)) {
@@ -753,6 +1078,8 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
             phoneCaption.setText(Double.isNaN(d) ? "Its own sensors" : Math.abs(d) < 0.03 ? "Steady"
                     : String.format(Locale.US, "%s %.2f °C/min", d > 0 ? "Warming" : "Cooling", Math.abs(d)));
         }
+        updateEyes();
+        showFloors();
         if (watchStatus != null) {
             WatchLink w = WatchLink.get(this);
             watchStatus.setText(w.streaming() ? "Connected: " + w.deviceName() : "Optional · pair it to compare heart rate");
@@ -783,23 +1110,8 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
     @Override
     public void onSensorChanged(SensorEvent e) {
         if (e.sensor.getType() == Sensor.TYPE_STEP_COUNTER) {
-            // The counter runs since boot; keep the first value seen each day as that day's baseline.
-            long total = (long) e.values[0];
-            SharedPreferences p = Store.prefs(this);
-            String today = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
-            long base = p.getLong("steps_base", -1);
-            if (!today.equals(p.getString("steps_day", "")) || base < 0 || total < base) {
-                base = total;
-                p.edit().putString("steps_day", today).putLong("steps_base", base).apply();
-            }
-            long now = total - base;
-            if (now != stepsToday) p.edit().putLong("steps_" + today, now).apply();   // for the Trends bars
-            stepsToday = now;
+            stepsToday = DailyCounts.onStepCounter(this, (long) e.values[0]);   // also kept by AllDayService
             showSteps();
-        } else if (e.sensor.getType() == Sensor.TYPE_PRESSURE) {
-            pressure = e.values[0];
-            if (Double.isNaN(basePressure)) basePressure = pressure;
-            showBaro();
         }
     }
 
@@ -810,12 +1122,14 @@ public class MainActivity extends Activity implements SensorEventListener, CareP
         stepsCaption.setText(String.format(Locale.US, "%.0f%% of your %,d goal", 100.0 * stepsToday / STEP_GOAL, STEP_GOAL));
     }
 
-    private void showBaro() {
-        if (baroText == null || Double.isNaN(pressure)) return;
-        double dh = SensorManager.getAltitude((float) basePressure, (float) pressure);
-        if (Math.abs(dh) < 0.05) dh = 0;   // no "-0.0 m"
-        baroText.setText(String.format(Locale.US, "%+.1f m", dh));
-        baroCaption.setText(String.format(Locale.US, "≈ %.0f floors since this screen opened", Math.abs(dh) / 3.0));
+    /** Flights climbed today (AllDayService counts them; it writes within a minute of each flight). */
+    private void showFloors() {
+        if (floorsText == null) return;
+        String today = DailyCounts.today();
+        int up = DailyCounts.floorsUp(this, today), down = DailyCounts.floorsDown(this, today);
+        floorsText.setText(String.valueOf(up));
+        floorsCaption.setText(up == 0 && down == 0 ? (AllDayService.running ? "Today, on foot" : "Starts counting in the background")
+                : String.format(Locale.US, "≈ %.0f m up today%s", up * FloorCounter.FLOOR_M, down > 0 ? " · " + down + " down" : ""));
     }
 
     @Override

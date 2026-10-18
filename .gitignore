@@ -37,3 +37,10 @@ app/src/main/assets/face_landmarker.task
 tools/barotest/build/
 tools/barotest/debug.keystore
 tools/barotest/out/
+
+# Eye tracking libraries and model (proto-app/fetch_eyetrack_libs.sh downloads them)
+proto-app/libs/
+proto-app/assets/face_landmarker.task
+
+# Care: product photos for offline shelves (the stores' images; tools/care_seed.py fetches them)
+proto-app/assets/care/img/

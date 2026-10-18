@@ -1,0 +1,22 @@
+{
+ "UNPLUGGED|hand": {
+  "sdm-therm-monitor": [
+   0.1624
+  ],
+  "quiet-therm": [
+   0.1421
+  ],
+  "pa-therm": [
+   0.1914
+  ],
+  "chg-therm": [
+   0.1973
+  ],
+  "usbc-therm-monitor": [
+   0.0803
+  ],
+  "rcam-therm": [
+   0.0546
+  ]
+ }
+}

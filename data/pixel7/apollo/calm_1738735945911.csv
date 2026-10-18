@@ -1,0 +1,5 @@
+epoch_ms,motion_index,ema,threshold,hand_gated_pct,intervention
+1738735946480,NaN,NaN,NaN,100.0,0
+1738735946984,-2.4131,-2.4131,NaN,80.9,0
+1738735947504,-2.6176,-2.4745,NaN,20.8,0
+1738735948006,-2.2975,-2.4214,NaN,0.0,0

@@ -194,12 +194,25 @@ public class CalmSenseActivity extends Activity implements SensorEventListener {
         worker.start();
         startButton.setText("Stop");
         status.setText("Listening… learning your baseline");
+        if (getIntent().getBooleanExtra("checkin", false)) {   // part of a check-in: one minute, then on to the next test
+            status.setText(String.format(Locale.US, "Listening for %d s… learning your baseline", CHECKIN_S));
+            autoStop.postDelayed(() -> {
+                stop();
+                status.setText("Done. Next test coming up…");
+                autoStop.postDelayed(this::finish, 1500);
+            }, CHECKIN_S * 1000L);
+        }
         Store.event(this, sessionMs, sessionMs, "calm_started", String.format(Locale.US, "volume=%d/%d", vol, max));
     }
+
+    /** In a check-in, a session runs this long, then the screen closes so the next test can start. */
+    static final int CHECKIN_S = 60, MIN_SAVED_S = 45;
+    private final android.os.Handler autoStop = new android.os.Handler(android.os.Looper.getMainLooper());
 
     private void stop() {
         if (!running) return;
         running = false;
+        autoStop.removeCallbacksAndMessages(null);
         try {
             if (worker != null) worker.join(500);
         } catch (InterruptedException ignored) {
@@ -221,6 +234,16 @@ public class CalmSenseActivity extends Activity implements SensorEventListener {
         startButton.setText("Start");
         status.setText(String.format(Locale.US, "Stopped · %d message%s shown", interventions, interventions == 1 ? "" : "s"));
         Store.event(this, System.currentTimeMillis(), sessionMs, "calm_stopped", "interventions=" + interventions);
+        long ms = System.currentTimeMillis() - sessionMs;
+        if (ms >= MIN_SAVED_S * 1000L) {   // a real session: a result for Today and the check-in
+            try {
+                Store.save(this, new org.json.JSONObject().put("id", sessionMs).put("type", "calm")
+                        .put("duration_s", Math.round(ms / 1000.0)).put("interventions", interventions)
+                        .put("hand_gated_pct", totalFrames == 0 ? 0 : Math.round(100.0 * gatedFrames / totalFrames))
+                        .put("raw_file", "calm_" + sessionMs + ".csv"));
+            } catch (org.json.JSONException ignored) {
+            }
+        }
     }
 
     /** Audio thread: one chirp period at a time -> echo change -> 0.5 s movement index -> trigger. */

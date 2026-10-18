@@ -141,6 +141,15 @@ final class ThermalMonitor implements android.hardware.SensorEventListener {
         return gyroNow;
     }
 
+    /** Largest gyroscope rotation in the last second, rad/s: a bump or a drop shows here before the median moves. */
+    double gyroPeak() {
+        synchronized (gyro) {
+            double m = Double.NaN;
+            for (double[] g : gyro) m = Double.isNaN(m) ? g[1] : Math.max(m, g[1]);
+            return m;
+        }
+    }
+
     void addListener(Listener l) {
         listeners.add(l);
     }

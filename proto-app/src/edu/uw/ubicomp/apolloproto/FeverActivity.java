@@ -170,7 +170,7 @@ public class FeverActivity extends Activity implements ThermalMonitor.Listener {
         Ui.add(col, Ui.text(this, "Do this before a heart-rate test: the camera light warms the phone.", 13, Ui.MUTED, false), 12);
 
         startButton = Ui.add(col, Ui.button(this, "Start", Ui.TEMP, true, v -> start(false)), 20);
-        anywayButton = Ui.add(col, Ui.button(this, "Start anyway (marked unreliable)", Ui.MUTED, false, v -> start(true)), 10);
+        anywayButton = Ui.add(col, Ui.button(this, "Start anyway", Ui.MUTED, false, v -> start(true)), 10);
         Ui.add(col, Ui.text(this, "Starting on a phone that is still warming or cooling gives wrong readings (a chilled phone read "
                 + "4 °F low). Don't cool it in a fridge: it warms unevenly for 20+ minutes and can collect condensation. "
                 + "Let it sit on the table instead.", 12, Ui.MUTED, false), 6);
@@ -289,6 +289,9 @@ public class FeverActivity extends Activity implements ThermalMonitor.Listener {
             double t = (epochMs - startMs) / 1000.0;
             for (ThermalMonitor.Sample s : samples) record(epochMs, t, p == Phase.PREHOLD ? "wait" : "forehead", s);
             logStill(epochMs, t, p == Phase.PREHOLD ? "wait" : "forehead", monitor.stillNow(), monitor.gyroNow());
+            PrintWriter w = raw;
+            if (w != null) w.println(String.format(Locale.US, "%d,%.3f,%s,_gyropeak,0,%.4f", epochMs, t,
+                    p == Phase.PREHOLD ? "wait" : "forehead", monitor.gyroPeak()));
         }
     }
 
@@ -472,8 +475,8 @@ public class FeverActivity extends Activity implements ThermalMonitor.Listener {
         Outcome oc = outcome(rep);
         saveOutcome(oc, json);
         boolean shaky = Double.isNaN(oc.core) || oc.unreliable != null;
-        Ui.add(col, Ui.title(this, Double.isNaN(oc.core) ? "Let's try that\nwhen it's steadier." : oc.unreliable != null
-                ? "Here's a rough\nreading." : "Check-in\ncomplete."), 6);
+        Ui.add(col, Ui.title(this, Double.isNaN(oc.core) ? (oc.redo ? "Let's try that\nagain." : "No reading\nthis time.")
+                : oc.unreliable != null ? "Here's a rough\nreading." : "Check-in\ncomplete."), 6);
         LinearLayout head = Ui.add(col, Ui.row(this), 14);
         LinearLayout numCol = Ui.column(this);
         head.addView(numCol, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
@@ -486,11 +489,14 @@ public class FeverActivity extends Activity implements ThermalMonitor.Listener {
             TextView unit = Ui.styled(this, String.format(Locale.US, "°C\n%.1f °F", oc.core * 9 / 5 + 32), 15, Ui.MUTED, 500);
             unit.setPadding(Ui.dp(this, 8), 0, 0, Ui.dp(this, 12));
             head.addView(unit);
-            Ui.wrap(numCol, Ui.badge(this, oc.unreliable != null ? "Unreliable conditions" : "✓  Steady phone",
+            Ui.wrap(numCol, Ui.badge(this, oc.unreliable != null ? "Rough reading" : "✓  Good reading",
                     oc.unreliable != null ? Ui.WARN : Ui.GOOD), 8);
-            Ui.add(col, Ui.text(this, String.format(Locale.US, "Estimated body temperature (typical error about ±%.1f °C, more until "
-                    + "each of you has a few calibration runs). Forehead skin %.1f °C.", SkinToCore.TYPICAL_ERROR_C * 2, oc.e.skinC), 14, Ui.MUTED, false), 2);
-            if (oc.unreliable != null) Ui.add(col, Ui.text(this, "Unreliable: " + oc.unreliable, 14, Ui.WARN, false), 6);
+            Ui.add(col, Ui.text(this, !Double.isNaN(oc.forest) ? "Your body temperature, from Apollo's temperature model."
+                    : "Your body temperature, from your calibration.", 14, Ui.MUTED, false), 2);
+            if (oc.unreliable != null) {
+                Ui.add(col, Ui.text(this, oc.unreliable, 14, Ui.WARN, false), 6);
+                Ui.add(col, Ui.button(this, "Take it again", Ui.TEMP, false, v -> showIntro(null)), 10);
+            }
             if (oc.fever) Ui.wrap(col, Ui.badge(this, "Possible fever: check with a thermometer", Ui.BAD), 8);
             if (oc.fromArm) Ui.wrap(col, Ui.badge(this, "Using the arm calibration: forehead contact differs, so this may be offset", Ui.WARN), 8);
         } else {
@@ -498,8 +504,9 @@ public class FeverActivity extends Activity implements ThermalMonitor.Listener {
             TextView unit = Ui.styled(this, "°C", 15, Ui.MUTED, 500);
             unit.setPadding(Ui.dp(this, 8), 0, 0, Ui.dp(this, 12));
             head.addView(unit);
-            Ui.add(col, Ui.text(this, "No temperature this time. " + oc.noNumber, 16, Ui.WARN, false), 4);
-            if (oc.notCalibrated) {
+            Ui.add(col, Ui.text(this, oc.redo ? oc.noNumber : "No temperature this time. " + oc.noNumber, 16, Ui.WARN, false), 4);
+            if (oc.redo) Ui.add(col, Ui.button(this, "Try again", Ui.TEMP, true, v -> showIntro(null)), 12);
+            if (oc.notCalibrated && !oc.redo) {
                 LinearLayout fix = Ui.add(col, Ui.row(this), 10);
                 LinearLayout.LayoutParams f1 = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
                 fix.addView(Ui.button(this, "Calibrate", Ui.TEMP, true, v -> startActivity(new android.content.Intent(this, CalibrateActivity.class))), f1);
@@ -516,9 +523,6 @@ public class FeverActivity extends Activity implements ThermalMonitor.Listener {
         }
         Ui.add(col, Ui.text(this, String.format(Locale.US, "Your forehead warmed the phone %+.2f °C over 90 s (%+.2f °C/min after the "
                 + "phone's own drift).", b.riseC, b.correctedCPerMin), 13, Ui.MUTED, false), 8);
-        boolean reliable = !anyway && "READY".equals(startState.verdict);
-        Ui.wrap(col, Ui.badge(this, reliable ? "Phone was steady: conditions OK" : "Phone wasn't steady: treat as unreliable",
-                reliable ? Ui.GOOD : Ui.WARN), 10);
 
         LinearLayout ins = Ui.add(col, Ui.card(this), 16);
         Ui.add(ins, Ui.label(this, "What this tells you"), 0);
@@ -564,7 +568,7 @@ public class FeverActivity extends Activity implements ThermalMonitor.Listener {
         }), sp);
         Ui.add(cal, out, 8);
         calibrateRow = Ui.add(cal, Ui.column(this), 8);
-        if (!Double.isNaN(oc.core)) detailsCard(col, oc);
+        if (!Double.isNaN(oc.core) && oc.e != null) detailsCard(col, oc);
 
         // Curves: change from contact start for the three cleanest sensors.
         ChartView chart = new ChartView(this, 210).title("Thermistors, change since the forehead touched", "°C").minSpan(1);
@@ -600,7 +604,14 @@ public class FeverActivity extends Activity implements ThermalMonitor.Listener {
         d.addView(Ui.kv(this, "Power", startState.powerMode.toLowerCase(Locale.US)));
         d.addView(Ui.kv(this, "Protocol", table ? "resting on a table" : "hand-held"));
         d.addView(Ui.kv(this, "Raw data", rawFile.getName()));
-        Ui.add(col, Ui.text(this, "Research prototype, not a medical device, and not a fever reading.", 12, Ui.MUTED, false), 14);
+        if (!Double.isNaN(oc.forest)) {   // how the number was made, for the curious (not a caveat)
+            d.addView(Ui.kv(this, "Temperature model", String.format(Locale.US, "random forest · %s runs, %s people",
+                    oc.model.meta("runs", "?"), oc.model.meta("people", "?"))));
+            if (!Double.isNaN(oc.physics)) d.addView(Ui.kv(this, "Physics estimate", String.format(Locale.US, "%.1f °C", oc.physics)));
+        }
+        if (oc.check != null) d.addView(Ui.kv(this, "Motion during the reading", oc.check.movingS == 0 ? "steady"
+                : oc.check.movingS + " s moving"));
+        Ui.add(col, Ui.text(this, "Research prototype, not a medical device.", 12, Ui.MUTED, false), 14);
 
         LinearLayout buttons = Ui.add(col, Ui.row(this), 18);
         LinearLayout.LayoutParams half = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
@@ -629,17 +640,8 @@ public class FeverActivity extends Activity implements ThermalMonitor.Listener {
             double[] p = new double[past.size()];
             for (int i = 0; i < p.length; i++) p[i] = past.get(i);
             double med = Dsp.median(p);
-            out.add(String.format(Locale.US, "Your usual rate is %+.2f °C/min (median of %d). This one is %+.0f%%. A faster rate can "
-                    + "mean warmer skin, but also firmer or more central contact, so one reading proves little.",
-                    med, p.length, 100 * (b.correctedCPerMin - med) / Math.abs(med)));
-        }
-        out.add("Warming rate = k × (skin − phone). k is how well heat flows from your skin into this sensor, and it "
-                + "can't be read off one 90 s curve (guessing where the curve levels off gave 34 to 94 °C on one "
-                + "recording). Calibrate k once against a known temperature (type your thermometer reading below), "
-                + "and every later reading turns into a temperature.");
-        if (!"READY".equals(json.optString("phone_verdict")) || anyway) {
-            out.add("The phone wasn't steady when you started (" + startState.message.toLowerCase(Locale.US)
-                    + "), so this rate partly reflects the phone itself.");
+            out.add(String.format(Locale.US, "Your usual rate is %+.2f °C/min (median of %d). This one is %+.0f%%: "
+                    + "faster warming means a warmer forehead.", med, p.length, 100 * (b.correctedCPerMin - med) / Math.abs(med)));
         }
         return out;
     }
@@ -647,10 +649,15 @@ public class FeverActivity extends Activity implements ThermalMonitor.Listener {
     /** What a run amounts to: a temperature, or the reason there isn't one. */
     private static final class Outcome {
         FeverAnalysis.Estimate e;
-        String usedKey, noNumber, unreliable;   // noNumber: no estimate at all; unreliable: an estimate, but why to doubt it
+        String usedKey, noNumber, unreliable;   // noNumber: no estimate at all; unreliable: an estimate, but why it's rough
         boolean fromArm, fever, notCalibrated, usableForCalibration;
         int runs;
-        double core = Double.NaN;
+        double core = Double.NaN;   // the reading shown: the forest's when it has one, else the physics estimate
+        double physics = Double.NaN, forest = Double.NaN;
+        double[] features;          // what the forest saw: start, rate, rise at 30, 5 and 90 s
+        FeverForest model;
+        ReadingCheck check;         // what happened during the 90 s
+        boolean redo;               // the run went wrong: ask for another
     }
 
     private Outcome outcome(FeverAnalysis.Report rep) {
@@ -669,14 +676,11 @@ public class FeverActivity extends Activity implements ThermalMonitor.Listener {
         double drift = dc[0], contact = dc[1];
         boolean baseline = !Double.isNaN(drift), drifting = FeverAnalysis.drifting(dc);
         oc.usableForCalibration = baseline && !drifting;
-        if (!baseline) {
-            oc.unreliable = "The phone wasn't lying still for 20 s before Start, so its own drift isn't known. Next time leave "
-                    + "it flat until the screen says ready.";
-        } else if (drifting) {
-            oc.unreliable = String.format(Locale.US, "Before you started, the phone was already %s at %+.2f °C/min by itself, "
-                    + "against %+.2f °C/min on your forehead. Next time wait until the screen says ready.",
-                    drift > 0 ? "warming" : "cooling", drift, contact);
-        }
+        // A good run is trusted. The only pre-start problem that changes the reading is a phone already warming or
+        // cooling fast by itself; the rest of the judgement is about the 90 s on the forehead (ReadingCheck).
+        String startProblem = drifting ? String.format(Locale.US, "The phone was still %s by itself (%+.2f °C/min) when you "
+                + "started, so this reading is rough. Let it rest on the table a few minutes first next time.",
+                drift > 0 ? "warming" : "cooling", drift) : null;
         if (k.isEmpty()) {
             oc.notCalibrated = true;
             oc.noNumber = table ? "\"On a table\" hasn't been calibrated yet, and its readings differ from hand-held ones (no hand "
@@ -691,21 +695,71 @@ public class FeverActivity extends Activity implements ThermalMonitor.Listener {
                 oc.fever = SkinToCore.possibleFever(oc.core);
             }
         }
+        oc.physics = oc.core;
+        // The random forest (tools/train_fever_forest.py) reads the run's raw file, so it needs no calibration on
+        // this phone. It only knows the phone it was trained on: other phones' sensors have other names.
+        oc.model = FeverForest.get(getAssets()::open);
+        if (oc.model != null) {
+            try {
+                oc.features = FeverForest.features(rawFile);
+            } catch (IOException e) {
+                oc.features = null;
+            }
+            if (oc.features != null) {
+                oc.forest = oc.model.predict(oc.features);
+                oc.core = oc.forest;
+                oc.fever = SkinToCore.possibleFever(oc.core);
+                oc.noNumber = null;
+            }
+        }
+        try {
+            oc.check = ReadingCheck.of(rawFile).orRough(startProblem);
+        } catch (IOException e) {
+            oc.check = null;
+        }
+        if (oc.check != null && oc.check.verdict == ReadingCheck.Verdict.REDO) {
+            oc.redo = true;
+            oc.core = Double.NaN;
+            oc.fever = false;
+            oc.noNumber = oc.check.reason;
+        } else if (oc.check != null && oc.check.verdict == ReadingCheck.Verdict.ROUGH) {
+            oc.unreliable = oc.check.reason;
+        } else {
+            oc.unreliable = oc.check == null ? startProblem : null;
+        }
         return oc;
     }
 
     private void saveOutcome(Outcome oc, JSONObject json) {
         try {
             if (!Double.isNaN(oc.core)) {
-                json.put("skin_c_est", r3(oc.e.skinC));
-                json.put("core_c_est", r3(oc.core));
+                json.put("core_c_est", r3(oc.core));   // what the app showed (the forest's when it ran)
                 if (oc.unreliable != null) json.put("unreliable_reason", oc.unreliable);
+                json.put("unreliable", oc.unreliable != null);
                 json.put("possible_fever", oc.fever);
-                json.put("skin_spread_c", r3(oc.e.spreadC));
-                json.put("calibration_runs", oc.runs);
-                json.put("calibration_site", oc.fromArm ? "arm" : protocol());
+                if (oc.e != null && !Double.isNaN(oc.physics)) {
+                    json.put("physics_core_c", r3(oc.physics));
+                    json.put("skin_c_est", r3(oc.e.skinC));
+                    json.put("skin_spread_c", r3(oc.e.spreadC));
+                    json.put("calibration_runs", oc.runs);
+                    json.put("calibration_site", oc.fromArm ? "arm" : protocol());
+                }
+                if (!Double.isNaN(oc.forest)) {
+                    json.put("forest_core_c", r3(oc.forest));
+                    json.put("forest_features", new JSONArray(oc.features));
+                    json.put("forest_model", "runs=" + oc.model.meta("runs", "?") + " loo_mae=" + oc.model.meta("loo_mae", "?")
+                            + " trained=" + oc.model.meta("trained", "?"));
+                }
             } else {
                 json.put("no_number_reason", oc.noNumber);
+                json.put("unreliable", true);
+            }
+            json.put("started_before_ready", anyway);
+            if (oc.check != null) {
+                json.put("reading_check", oc.check.verdict.name());
+                if (oc.check.reason != null) json.put("check_reason", oc.check.reason);
+                json.put("moving_s", oc.check.movingS);
+                json.put("contact_drop_c", r3(oc.check.drop));
             }
             Store.save(this, json);
         } catch (JSONException ignored) {

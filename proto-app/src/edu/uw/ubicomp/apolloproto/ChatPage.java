@@ -1,6 +1,16 @@
 package edu.uw.ubicomp.apolloproto;
 
 import android.app.Activity;
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
+import android.graphics.Canvas;
+import android.graphics.Outline;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.PixelFormat;
+import android.graphics.Rect;
+import android.graphics.RectF;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
@@ -13,17 +23,20 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * "Ask Apollo": the chat tab (the design boards' companion screen). Replies come from ApolloBrain, on
- * the phone; action buttons under a reply open the screen it suggests. The conversation lasts while the
- * app is open.
+ * the phone; action buttons under a reply open the screen it suggests. Apollo answers in speech bubbles
+ * with his face beside them, its expression matched to what he says (mood()). The conversation lasts
+ * while the app is open.
  */
 final class ChatPage {
     interface Host {
@@ -40,6 +53,7 @@ final class ChatPage {
     private LinearLayout thread;
     private ScrollView scroll;
     private EditText input;
+    private ImageView headFace;
     private boolean thinking;
 
     ChatPage(Activity a, Host host) {
@@ -51,7 +65,8 @@ final class ChatPage {
     void build(LinearLayout col, ScrollView scroll) {
         this.scroll = scroll;
         LinearLayout head = Ui.add(col, Ui.row(a), 6);
-        head.addView(Ui.mascot(a, "hello", 64));
+        headFace = Ui.mascot(a, mood(lastReply()), 64);
+        head.addView(headFace);
         LinearLayout names = Ui.column(a);
         TextView t = Ui.styled(a, "A little perspective.", 26, Ui.TEXT, 700);
         names.addView(t);
@@ -122,15 +137,22 @@ final class ChatPage {
         thread.addView(bubble(mine));
         // A short pause with a typing bubble, so the reply reads as a reply.
         thinking = true;
-        View dots = bubble(new ApolloBrain.Msg(false, "…", null));
+        View dots = bubble(new ApolloBrain.Msg(false, TYPING, null));
         thread.addView(dots);
+        setFace(headFace, "thinking");
         toBottom(40);
         ui.postDelayed(() -> {
             thinking = false;
             thread.removeView(dots);
             ApolloBrain.Msg r = ApolloBrain.reply(a, q, host.steps());
+            // Care's recommender remembers the conversation; if the words clearly name a need Apollo didn't point to, link its picks.
+            String need = CareSignals.chat(a, q, r);
+            boolean linked = false;
+            for (String[] act : r.actions) linked |= act[1].startsWith("category:") || act[1].startsWith("care:");
+            if (need != null && !linked) r.act("See picks for " + CareData.need(need).title.toLowerCase(Locale.US), "care:meds");
             HISTORY.add(r);
             thread.addView(bubble(r));
+            setFace(headFace, mood(r));
             toBottom(40);
         }, 650);
     }
@@ -142,25 +164,70 @@ final class ChatPage {
         }, delayMs);
     }
 
+    private static final String TYPING = "\u2022 \u2022 \u2022";
+
+    /** The newest thing Apollo said (his greeting at first). */
+    private static ApolloBrain.Msg lastReply() {
+        for (int i = HISTORY.size() - 1; i >= 0; i--) if (!HISTORY.get(i).mine) return HISTORY.get(i);
+        return ApolloBrain.greeting();
+    }
+
+    /**
+     * Apollo's face for a reply, from what it says (the expression board's moods): thinking while he types
+     * or when a reading deserves a closer look, happy at good news, curious when there's nothing to go on
+     * yet or when it may be an emergency (alert, never smiling), calm for a breathing exercise.
+     */
+    static String mood(ApolloBrain.Msg m) {
+        String t = m.text.toLowerCase(Locale.US);
+        boolean dials = false;
+        for (String[] act : m.actions) dials |= act[1].startsWith("dial:");
+        if (TYPING.equals(m.text)) return "thinking";
+        if (dials) return "curious";
+        if (t.contains("slow it down") || t.contains("breathe in")) return "calm";
+        if (t.contains("above typical") || t.contains("above the usual") || t.contains("weak signal") || t.contains("can't see")) return "thinking";
+        if (t.contains("don't have") || t.contains("no readings yet") || t.contains("still building")) return "curious";
+        if (t.contains("nice going") || t.contains("typical range") || t.contains("inside the usual") || t.contains("good signal")
+                || t.startsWith("anytime") || t.startsWith("hello")) return "happy";
+        if (t.startsWith("i'm a small helper")) return "wink";
+        if (t.contains("times how fast") || t.contains("barometer")) return "thinking";
+        return "hello";
+    }
+
+    /** Swap a face to another mood with a little pop. */
+    private void setFace(ImageView face, String mood) {
+        if (face == null) return;
+        int id = a.getResources().getIdentifier("apollo_" + mood, "drawable", a.getPackageName());
+        if (id == 0) return;
+        face.setImageResource(id);
+        face.setScaleX(0.85f);
+        face.setScaleY(0.85f);
+        face.animate().scaleX(1f).scaleY(1f).setDuration(220).start();
+    }
+
     private View bubble(ApolloBrain.Msg m) {
-        int max = (int) (a.getResources().getDisplayMetrics().widthPixels * (m.mine ? 0.78f : 0.86f));
+        int width = a.getResources().getDisplayMetrics().widthPixels;
+        int face = Ui.dp(a, 40), gap = Ui.dp(a, 4), tail = Ui.dp(a, 8);
+        int max = m.mine ? (int) (width * 0.78f) : (int) (width * 0.86f) - face - gap;
         LinearLayout holder = Ui.column(a);
         holder.setGravity(m.mine ? Gravity.END : Gravity.START);
         holder.setPadding(0, Ui.dp(a, 12), 0, 0);
         LinearLayout b = Ui.column(a);
-        float r = Ui.dp(a, 22), tail = Ui.dp(a, 6);
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(m.mine ? Ui.CORAL_TINT : Ui.CARD);
-        bg.setCornerRadii(m.mine ? new float[]{r, r, r, r, tail, tail, r, r} : new float[]{r, r, r, r, r, r, tail, tail});
-        if (!m.mine) bg.setStroke(Ui.dp(a, 1), Ui.LINE);
-        b.setBackground(bg);
-        b.setPadding(Ui.dp(a, 18), Ui.dp(a, 14), Ui.dp(a, 18), Ui.dp(a, 14));
+        b.setBackground(new Bubble(m.mine ? Ui.CORAL_TINT : Ui.CARD, m.mine ? 0 : Ui.LINE, !m.mine, Ui.dp(a, 22), tail, Ui.dp(a, 1)));
+        b.setPadding(Ui.dp(a, 18) + (m.mine ? 0 : tail), Ui.dp(a, 14), Ui.dp(a, 18) + (m.mine ? tail : 0), Ui.dp(a, 14));
         if (!m.mine) Ui.lift(b, 1);
         TextView t = Ui.styled(a, "", 15.5f, Ui.TEXT, 400);
         t.setText(rich(m.text));
-        t.setMaxWidth(max - Ui.dp(a, 36));
+        t.setMaxWidth(max - Ui.dp(a, 36) - tail);
         t.setLineSpacing(0, 1.3f);
         b.addView(t);
+        if (TYPING.equals(m.text)) {   // the typing dots breathe
+            t.setTextColor(Ui.MUTED);
+            ObjectAnimator pulse = ObjectAnimator.ofFloat(t, View.ALPHA, 1f, 0.3f);
+            pulse.setDuration(450);
+            pulse.setRepeatMode(ValueAnimator.REVERSE);
+            pulse.setRepeatCount(ValueAnimator.INFINITE);
+            pulse.start();
+        }
         if (m.basedOn != null) {
             View div = new View(a);
             div.setBackgroundColor(Ui.LINE);
@@ -168,14 +235,88 @@ final class ChatPage {
             Ui.add(b, Ui.text(a, "Based on: " + m.basedOn, 12.5f, Ui.MUTED, false), 10);
         }
         LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        holder.addView(b, bl);
+        if (m.mine) {
+            holder.addView(b, bl);
+        } else {
+            // Apollo on the page's ivory (no disc behind him), the bubble's tail pointing at him.
+            LinearLayout row = Ui.row(a);
+            row.setGravity(Gravity.BOTTOM);
+            ImageView f = Ui.mascot(a, mood(m), 40);
+            f.setContentDescription("Apollo");
+            row.addView(f);
+            bl.leftMargin = gap;
+            row.addView(b, bl);
+            holder.addView(row);
+        }
         for (String[] act : m.actions) {
             TextView btn = Ui.button(a, act[0], Ui.MUTED, false, v -> host.act(act[1]));
             btn.setMinHeight(Ui.dp(a, 48));
             btn.setTextSize(15);
-            Ui.add(holder, btn, 10);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = Ui.dp(a, 10);
+            lp.leftMargin = face + gap;   // under the bubble, not under his face
+            holder.addView(btn, lp);
         }
         return holder;
+    }
+
+    /** A speech bubble: a rounded body and a small curved tail at its bottom corner, toward Apollo (left) or the edge (right). */
+    private static final class Bubble extends Drawable {
+        private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path path = new Path();
+        private final RectF body = new RectF();
+        private final boolean left;
+        private final float r, tail;
+
+        Bubble(int color, int strokeColor, boolean left, float r, float tail, float strokeWidth) {
+            this.left = left;
+            this.r = r;
+            this.tail = tail;
+            fill.setColor(color);
+            stroke.setStyle(Paint.Style.STROKE);
+            stroke.setStrokeWidth(strokeWidth);
+            stroke.setColor(strokeColor);
+        }
+
+        @Override
+        protected void onBoundsChange(Rect b) {
+            float h = b.height(), s = r * 0.27f;
+            body.set(b.left + (left ? tail : 0), b.top, b.right - (left ? 0 : tail), b.bottom);
+            path.reset();
+            path.addRoundRect(body, left ? new float[]{r, r, r, r, r, r, s, s} : new float[]{r, r, r, r, s, s, r, r}, Path.Direction.CW);
+            Path t = new Path();   // the tail: out from the body's lower side to a point level with its bottom
+            float x = left ? body.left : body.right, dir = left ? -1 : 1, bottom = b.bottom;
+            t.moveTo(x, bottom - Math.min(h * 0.5f, tail * 2.2f));
+            t.quadTo(x + dir * tail * 0.15f, bottom - tail * 0.35f, x + dir * tail, bottom);
+            t.lineTo(x - dir * tail * 1.4f, bottom);
+            t.close();
+            path.op(t, Path.Op.UNION);
+            invalidateSelf();
+        }
+
+        @Override
+        public void draw(Canvas c) {
+            c.drawPath(path, fill);
+            if (stroke.getColor() != 0) c.drawPath(path, stroke);
+        }
+
+        @Override
+        public void getOutline(Outline o) {   // the soft shadow follows the body
+            o.setRoundRect((int) body.left, (int) body.top, (int) body.right, (int) body.bottom, r);
+        }
+
+        @Override
+        public void setAlpha(int alpha) {
+        }
+
+        @Override
+        public void setColorFilter(android.graphics.ColorFilter cf) {
+        }
+
+        @Override
+        public int getOpacity() {
+            return PixelFormat.TRANSLUCENT;
+        }
     }
 
     /** "**72 bpm**" → semibold Inter. */

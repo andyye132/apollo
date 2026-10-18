@@ -8,6 +8,10 @@
 
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <!-- Passive eye tracking (All day): a camera foreground service with its notification. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Development permission for the thermistors, granted once over adb (build.sh does it on install). -->
     <uses-permission android:name="android.permission.DUMP" />
@@ -21,6 +25,9 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Care: nearby hospitals, clinics and labs (approximate location, only while the app is open) -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Care: product search (UPCitemdb), drug labels (openFDA), places and map tiles (OpenStreetMap). Readings never leave the phone. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
@@ -49,9 +56,13 @@
         </activity>
         <activity android:name=".HeartRateActivity" android:screenOrientation="portrait" />
         <activity android:name=".FeverActivity" android:screenOrientation="portrait" />
+        <activity android:name=".BreathActivity" android:screenOrientation="portrait" />
+        <!-- Steps and flights climbed all day (barometer + step detector, batched in the sensor hub). -->
+        <service android:name=".AllDayService" android:exported="false" />
         <activity android:name=".WatchActivity" android:screenOrientation="portrait" />
         <activity android:name=".TouchLabActivity" android:screenOrientation="portrait" />
         <activity android:name=".CalmSenseActivity" android:screenOrientation="portrait" />
         <activity android:name=".CalibrateActivity" android:screenOrientation="portrait" />
+        <service android:name=".EyeTrackingService" android:foregroundServiceType="camera" android:exported="false" />
     </application>
 </manifest>

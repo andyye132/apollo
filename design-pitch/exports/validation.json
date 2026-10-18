@@ -1,0 +1,18 @@
+{
+  "screens": 41,
+  "missing_routes": [],
+  "console_errors": [],
+  "overflow": [],
+  "mobile": {
+    "viewport": 390,
+    "width": 390
+  },
+  "mobile_dialog": {
+    "client": 366,
+    "scroll": 366
+  },
+  "small_dialog": {
+    "client": 296,
+    "scroll": 296
+  }
+}

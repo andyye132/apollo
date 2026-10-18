@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Apollo — a little more in tune</title>
+  <meta name="description" content="Apollo's low-poly brand and complete mobile UI pitch. Interactive screen concepts, grounded in the Android prototype.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="pitch-nav">
+    <a class="wordmark" href="#">apollo</a>
+    <nav aria-label="Pitch navigation"><a href="#direction">The direction</a><a href="#expressions">Expressions</a><a href="#screens">Every screen</a><button data-open="today">Try the flow <span>↗</span></button></nav>
+  </header>
+  <main>
+    <section id="hero" class="hero">
+      <div class="hero-copy"><div class="eyebrow">APOLLO / PRODUCT DESIGN PITCH / 01</div><h1>A little more<br>in <em>tune.</em></h1><p>Your health, a little clearer.<br>A companion that feels a little closer.</p><div class="hero-actions"><a href="#screens" class="pitch-button">Explore the screens <span>↘</span></a><span>Low-poly soul.<br>Thoughtfully simple UI.</span></div><div class="hero-signature"><img src="assets/apollo-low-poly.png" alt="Apollo, a waving low-poly character in a coral apple suit"><div><strong>Meet Apollo.</strong><span>A little apple. A lot of heart.</span></div></div></div>
+      <div class="hero-phones" id="hero-phones"></div><div class="hero-foot">CORAL AT HEART. CALM EVERYWHERE ELSE.<span>DESIGNED FOR ANDROID · APPLE-INSPIRED CLARITY</span></div>
+    </section>
+    <section id="direction" class="direction">
+      <div class="section-heading"><div><div class="eyebrow">01 / A PERSONALITY YOU CAN FEEL</div><h2>Soft edges.<br>Real character.</h2></div><p>A polished, faceted apple suit. A tiny button nose. A friendly wave. Apollo brings warmth at the moments that need it; your health information gets the rest of the room.</p></div>
+      <div class="brand-grid">
+        <div class="mascot-panel"><span class="eyebrow">THE LITTLE GUY</span><img src="assets/apollo-low-poly.png" alt="Selected low-poly Apollo mascot"><span class="brand-caption">Polished resin · soft facets · living coral</span></div>
+        <div class="identity-panel"><div class="logo-lockup" id="logo-lockup"><div class="app-icon"><img src="assets/apollo-low-poly.png" alt="Apollo waving app icon"></div><div class="logo-type">apollo</div><p>A little more in tune.</p></div><div class="swatches"><div style="--swatch:#ED7768"><b>Living coral</b><span>#ED7768</span></div><div style="--swatch:#F6F3EE"><b>Warm ivory</b><span>#F6F3EE</span></div><div style="--swatch:#8C9D77"><b>Leaf</b><span>#8C9D77</span></div><div style="--swatch:#2E302D;color:#fff"><b>Ink</b><span>#2E302D</span></div></div></div>
+      </div>
+      <div class="principles"><div><span>01</span><h3>Health comes first.</h3><p>Large readings, visible timestamps, quality labels, and a clear next step.</p></div><div><span>02</span><h3>A friend, when it helps.</h3><p>Apollo greets and guides. No floating mascot button over your dashboard.</p></div><div><span>03</span><h3>Warmth without noise.</h3><p>Coral for focus, ivory for breathing room, soft facets for personality.</p></div></div>
+    </section>
+    <section id="expressions" class="expressions-section">
+      <div id="expression-board">
+        <div class="section-heading"><div><div class="eyebrow">APOLLO / SIX LITTLE MOODS</div><h2>A familiar face.<br>For every moment.</h2></div><p>Same coral apple. Same button nose. A head-only expression set for greetings, guidance, a little patience, and the joy of finishing.</p></div>
+        <div id="expression-grid" class="expression-grid"></div>
+      </div>
+      <div id="expression-application-board"><div class="section-heading"><div><div class="eyebrow">EXPRESSIONS IN CONTEXT</div><h2>Finished. Focused.<br>Ready to try again.</h2></div><p>A smile celebrates completing the check-in. Calm eyes make space for concentration. A gentle wink makes a retry feel okay.</p></div><div id="expression-examples" class="expression-examples"></div></div>
+    </section>
+    <section id="screens" class="screens-section">
+      <div class="section-heading"><div><div class="eyebrow">02 / THE COMPLETE EXPERIENCE</div><h2>Every little moment,<br>considered.</h2></div><div><p>From the first hello to the last saved reading. Select any screen to explore the connected prototype.</p><small>Illustrative data · design prototype · no live measurements</small></div></div>
+      <div class="screen-controls"><div id="filters" aria-label="Filter screen groups"></div><label class="theme-control"><input type="checkbox" id="dark-toggle">Dark appearance</label></div>
+      <div id="screen-groups"></div>
+    </section>
+    <section class="handoff"><div><div class="eyebrow">03 / GROUNDED IN THE PROTOTYPE</div><h2>Delight on the surface.<br>Care in the details.</h2></div><div class="handoff-items"><p><b>Temperature before flash.</b> The guided check-in puts the thermal exam first. Phone readiness and cooling states stay visible.</p><p><b>20 seconds. 60 + 90 seconds.</b> Heart-rate capture and temperature preparation follow the timings in the existing Android code.</p><p><b>Honest results.</b> The prototype reports a forehead warming rate, not a calibrated body temperature. Poor heart-rate signals never become a large, misleading number.</p><p><b>Clear scope.</b> Today and the exam flows map to existing code. Onboarding, Journal, Trends, companion, and data controls are proposed product screens from the design plan.</p></div></section>
+  </main>
+  <footer class="pitch-footer"><span class="wordmark">apollo</span><span>LOW-POLY DIRECTION · OCTOBER 2026</span><a href="exports/apollo-ui-pitch.zip" download>Download screen images ↗</a></footer>
+  <dialog id="prototype"><div class="prototype-toolbar"><div><b id="prototype-title"></b><span id="prototype-kind"></span></div><button id="close-prototype" aria-label="Close prototype">✕</button></div><div class="prototype-stage"><button class="browse-arrow" id="prev-screen" aria-label="Previous screen">←</button><div id="prototype-phone"></div><button class="browse-arrow" id="next-screen" aria-label="Next screen">→</button></div><div id="prototype-note"></div></dialog>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -35,7 +35,7 @@ final class ApolloBrain {
         }
     }
 
-    // Actions MainActivity knows: temp, hr, calibrate, calm, trends, care:meds, care:services,
+    // Actions MainActivity knows: temp, hr, calibrate, calm, breath, trends, care:meds, care:services,
     // category:<id>, dial:<number>.
 
     static final String[] SUGGESTIONS = {
@@ -142,6 +142,16 @@ final class ApolloBrain {
             return new Msg(false, tip + "In Care, **" + d[0] + "** has options from nearby stores, with delivery links. "
                     + "Check with a pharmacist if you take other medication.", null)
                     .act("Open " + d[0], "category:" + cat);
+        }
+
+        if (has(q, "lung", "blow", "breath test", "breath strength", "breathing test", "how hard can i")) {
+            List<JSONObject> br = Store.history(c, "breath");
+            String last = br.isEmpty() ? "" : br.get(0).has("percent_of_baseline")
+                    ? String.format(Locale.US, " Your last one was **%d%%** of your usual.", br.get(0).optInt("percent_of_baseline"))
+                    : " You're still building your baseline.";
+            return new Msg(false, "The **breath strength** test: lay the phone flat and blow hard at the screen four times. The barometer "
+                    + "feels the glass flex, and Apollo compares the result with your own earlier ones. It's not a lung function test." + last,
+                    br.isEmpty() ? null : "breath strength · " + when(br.get(0).optLong("id"))).act("Try breath strength", "breath");
         }
 
         // 4. Feelings and the app itself.

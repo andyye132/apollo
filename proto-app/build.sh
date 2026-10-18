@@ -9,12 +9,25 @@ JAR=$(ls -d "$SDK"/platforms/android-* | sort -V | tail -1)/android.jar
 PKG=edu.uw.ubicomp.apolloproto
 ADB=(adb ${ADB_SERIAL:+-s "$ADB_SERIAL"})
 
-rm -rf build && mkdir -p build/classes build/dex
-javac --release 11 -nowarn -cp "$JAR" -d build/classes $(find src -name '*.java')
-"$BT/d8" --release --min-api 30 --lib "$JAR" --output build/dex $(find build/classes -name '*.class')
+[ -f libs/tasks-core-1.0.0.aar ] || ./fetch_eyetrack_libs.sh   # passive eye tracking: MediaPipe and its face model
+
+rm -rf build && mkdir -p build/classes build/dex build/libs build/stage/lib/arm64-v8a
+# Libraries: .jar as is; from each .aar its classes.jar and the arm64 native library (both test phones are arm64)
+cp libs/*.jar build/libs/
+for aar in libs/*.aar; do
+  n=$(basename "$aar" .aar)
+  unzip -qo -j "$aar" classes.jar -d "build/libs/$n" && mv "build/libs/$n/classes.jar" "build/libs/$n.jar" && rmdir "build/libs/$n"
+  unzip -qo -j "$aar" 'jni/arm64-v8a/*.so' -d build/stage/lib/arm64-v8a 2>/dev/null || true
+done
+LIBJARS=$(ls build/libs/*.jar)
+CP="$JAR:$(echo $LIBJARS | tr ' ' ':')"
+javac --release 11 -nowarn -cp "$CP" -d build/classes $(find src -name '*.java')
+"$BT/d8" --release --min-api 30 --lib "$JAR" --output build/dex $LIBJARS $(find build/classes -name '*.class') 2>&1 | grep -v -E "^Warning|Missing class" || true
 "$BT/aapt2" compile --dir res -o build/res.zip   # launcher icon and colours
-"$BT/aapt2" link --manifest AndroidManifest.xml -I "$JAR" -o build/unsigned.apk -A assets build/res.zip   # assets: the Inter font
-(cd build/dex && zip -q -u ../unsigned.apk classes.dex)
+# assets: the Inter font and the face model (MediaPipe memory-maps the model, so it must stay uncompressed: -0 task)
+"$BT/aapt2" link --manifest AndroidManifest.xml -I "$JAR" -o build/unsigned.apk -A assets -0 task build/res.zip
+(cd build/dex && zip -q -u ../unsigned.apk *.dex)
+(cd build/stage && zip -q -r ../unsigned.apk lib)
 "$BT/zipalign" -f 4 build/unsigned.apk build/aligned.apk
 [ -f debug.keystore ] || keytool -genkeypair -keystore debug.keystore -storepass android -keypass android \
   -alias debug -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Apollo Proto Debug" >/dev/null 2>&1
@@ -23,8 +36,8 @@ echo "built proto-app/build/apollo-proto.apk"
 
 if [ "${1:-}" = "--install" ]; then
   "${ADB[@]}" install -r build/apollo-proto.apk
-  for p in CAMERA ACTIVITY_RECOGNITION DUMP BLUETOOTH_SCAN BLUETOOTH_CONNECT RECORD_AUDIO; do
+  for p in CAMERA ACTIVITY_RECOGNITION DUMP BLUETOOTH_SCAN BLUETOOTH_CONNECT RECORD_AUDIO POST_NOTIFICATIONS; do
     "${ADB[@]}" shell pm grant "$PKG" "android.permission.$p"
   done
-  echo "installed; granted camera, activity recognition, thermistor (DUMP) and Bluetooth access"
+  echo "installed; granted camera, activity recognition, thermistor (DUMP), Bluetooth and notification access"
 fi

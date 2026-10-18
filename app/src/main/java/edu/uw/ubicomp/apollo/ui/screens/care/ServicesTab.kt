@@ -27,8 +27,6 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -48,6 +46,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import edu.uw.ubicomp.apollo.ui.components.ApolloCard
 import edu.uw.ubicomp.apollo.ui.components.apolloFilterChipColors
 
 private enum class LocationState { NOT_ASKED, GRANTED, DENIED }
@@ -233,9 +232,8 @@ private fun PlacesList(context: android.content.Context?) {
 
 @Composable
 private fun WhichShouldIChooseExplainer(expanded: Boolean, onToggle: () -> Unit) {
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+    ApolloCard(
+        containerColor = MaterialTheme.colorScheme.primaryContainer,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
@@ -281,11 +279,7 @@ private fun WhichShouldIChooseExplainer(expanded: Boolean, onToggle: () -> Unit)
 
 @Composable
 private fun PlaceCard(place: Place, context: android.content.Context?) {
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
+    ApolloCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(place.name, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onBackground)
             Spacer(Modifier.height(6.dp))

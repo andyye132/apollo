@@ -22,8 +22,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
@@ -43,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import edu.uw.ubicomp.apollo.ui.components.ApolloCard
 import edu.uw.ubicomp.apollo.ui.components.StatusChip
 import edu.uw.ubicomp.apollo.ui.components.apolloFilterChipColors
 import edu.uw.ubicomp.apollo.ui.theme.ApolloTheme
@@ -177,11 +176,7 @@ private fun PharmacistNote() {
 
 @Composable
 private fun ProductRow(product: Product, context: Context) {
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
+    ApolloCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(product.name, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onBackground)
             Spacer(Modifier.height(4.dp))

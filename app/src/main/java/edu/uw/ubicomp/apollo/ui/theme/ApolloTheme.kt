@@ -24,7 +24,6 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
@@ -36,57 +35,59 @@ import androidx.compose.ui.unit.sp
 import edu.uw.ubicomp.apollo.R
 
 // ---------- Color scheme (Material 3 roles) ----------
+// Tokens from apollo_health_ui_implementation_guide.md: warm cream canvas, coral/sunset accent,
+// sage-green "ready" and amber "cooling" signal colors.
 
 private val LightScheme = lightColorScheme(
-    primary = Color(0xFFE2654D),
+    primary = Color(0xFFE86A58), // AccentCoral
     onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFFBE1DB),
-    onPrimaryContainer = Color(0xFFB2472F),
-    secondary = Color(0xFFB07A00),
+    primaryContainer = Color(0xFFFDF0ED), // WarmCardTint
+    onPrimaryContainer = Color(0xFFCE503E), // AccentCoralDark
+    secondary = Color(0xFFD48B38), // AmberWarning
     onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFFFF0B8),
-    onSecondaryContainer = Color(0xFF4D3400),
-    tertiary = Color(0xFFE5566D),
+    secondaryContainer = Color(0xFFFDF3E7), // AmberContainer
+    onSecondaryContainer = Color(0xFF6B4A1D),
+    tertiary = Color(0xFF4FA070), // SageGreen
     onTertiary = Color(0xFFFFFFFF),
-    tertiaryContainer = Color(0xFFFFE1E3),
-    onTertiaryContainer = Color(0xFF5C0A1E),
-    background = Color(0xFFF5F1EB),
-    onBackground = Color(0xFF221E1B),
-    surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF221E1B),
-    surfaceVariant = Color(0xFFF2EDE6),
-    onSurfaceVariant = Color(0xFF6B635C),
+    tertiaryContainer = Color(0xFFEBF6EC), // SageGreenContainer
+    onTertiaryContainer = Color(0xFF1F5A38),
+    background = Color(0xFFF7F5F0), // WarmCanvas
+    onBackground = Color(0xFF1B1A18), // TextPrimary
+    surface = Color(0xFFFFFFFF), // CardSurface
+    onSurface = Color(0xFF1B1A18),
+    surfaceVariant = Color(0xFFECEAE4), // NeutralPill
+    onSurfaceVariant = Color(0xFF706C64), // TextSecondary
     surfaceContainerLowest = Color(0xFFFFFFFF),
-    surfaceContainerLow = Color(0xFFFAF7F2),
-    surfaceContainer = Color(0xFFF5F1EB),
-    surfaceContainerHigh = Color(0xFFEFE9E1),
-    outline = Color(0xFF8A8178),
-    outlineVariant = Color(0xFFE5DFD6),
-    inverseSurface = Color(0xFF362F2A),
-    inverseOnSurface = Color(0xFFFAF2ED),
+    surfaceContainerLow = Color(0xFFFBFAF7),
+    surfaceContainer = Color(0xFFF7F5F0),
+    surfaceContainerHigh = Color(0xFFEFEDE7),
+    outline = Color(0xFFA5A29B), // TextDisabled
+    outlineVariant = Color(0xFFE8E5DF), // SoftBorder
+    inverseSurface = Color(0xFF2F2D29),
+    inverseOnSurface = Color(0xFFF7F5F0),
     error = Color(0xFFB3261E),
     onError = Color(0xFFFFFFFF),
 )
 
 private val DarkScheme = darkColorScheme(
-    primary = Color(0xFFFFB3C1),
-    onPrimary = Color(0xFF5C0A1E),
-    primaryContainer = Color(0xFF8E2A40),
-    onPrimaryContainer = Color(0xFFFFD9E2),
-    secondary = Color(0xFFFFDF8A),
-    onSecondary = Color(0xFF4D3400),
-    tertiary = Color(0xFFFFB0BC),
-    onTertiary = Color(0xFF5C0A1E),
-    background = Color(0xFF1C1214),
-    onBackground = Color(0xFFF3E3E1),
-    surface = Color(0xFF1C1214),
-    onSurface = Color(0xFFF3E3E1),
-    onSurfaceVariant = Color(0xFFD8C3C0),
-    surfaceContainerLow = Color(0xFF261A1C),
-    surfaceContainer = Color(0xFF2C1F21),
-    surfaceContainerHigh = Color(0xFF38282B),
-    outline = Color(0xFFA68E8B),
-    outlineVariant = Color(0xFF4A3A3C),
+    primary = Color(0xFFF0917F),
+    onPrimary = Color(0xFF4A160D),
+    primaryContainer = Color(0xFF6B2A1E),
+    onPrimaryContainer = Color(0xFFFDF0ED),
+    secondary = Color(0xFFE8B274),
+    onSecondary = Color(0xFF442C06),
+    tertiary = Color(0xFF8FCBA3),
+    onTertiary = Color(0xFF0C3A20),
+    background = Color(0xFF1A1816),
+    onBackground = Color(0xFFEDEAE4),
+    surface = Color(0xFF1A1816),
+    onSurface = Color(0xFFEDEAE4),
+    onSurfaceVariant = Color(0xFFCFCAC1),
+    surfaceContainerLow = Color(0xFF231F1C),
+    surfaceContainer = Color(0xFF292420),
+    surfaceContainerHigh = Color(0xFF342E29),
+    outline = Color(0xFF938E85),
+    outlineVariant = Color(0xFF433D37),
 )
 
 // ---------- Extended colors (things M3 has no role for) ----------
@@ -103,23 +104,25 @@ data class ApolloColors(
     val oxygen: Color, val respiratory: Color,
 )
 
+// headerGradient: [SunsetCoral, SunsetYellow, fade-to-transparent] — see GradientHeader, which
+// places the middle stop at 55% per the guide's dissipating-sunset treatment.
 private val LightApollo = ApolloColors(
-    headerGradient = listOf(Color(0xFFFFD3DD), Color(0xFFFFE2D3), Color(0xFFFFF0B0)),
+    headerGradient = listOf(Color(0xFFEA5A47), Color(0xFFFDBB5D), Color(0x00F7F5F0)),
     headerScrim = Color(0xBDFFFFFF),
-    normal = Color(0xFFD7F5DD), onNormal = Color(0xFF0F5223),
-    elevated = Color(0xFFFFE7B8), onElevated = Color(0xFF5C3B00),
-    zoneLow = Color(0xFFF4A9BC), zoneNormal = Color(0xFF4CC38A), zoneRaised = Color(0xFFFFD15C),
-    zoneHigh = Color(0xFFFFAE57), zoneSevere = Color(0xFFF26B5E),
-    heart = Color(0xFFB3261E), temperature = Color(0xFF8A4E00), bloodPressure = Color(0xFF7A2FB5),
+    normal = Color(0xFFEBF6EC), onNormal = Color(0xFF4FA070), // SageGreenContainer / SageGreen
+    elevated = Color(0xFFFDF3E7), onElevated = Color(0xFFD48B38), // AmberContainer / AmberWarning
+    zoneLow = Color(0xFFF4A9BC), zoneNormal = Color(0xFF4FA070), zoneRaised = Color(0xFFFDBB5D),
+    zoneHigh = Color(0xFFD48B38), zoneSevere = Color(0xFFEA5A47),
+    heart = Color(0xFFCE503E), temperature = Color(0xFF8A4E00), bloodPressure = Color(0xFF7A2FB5),
     oxygen = Color(0xFF0B5CAD), respiratory = Color(0xFF3E3BB8),
 )
 
 private val DarkApollo = LightApollo.copy(
-    headerGradient = listOf(Color(0xFF1D2C4A), Color(0xFF282750), Color(0xFF35245A)),
+    headerGradient = listOf(Color(0xFF6B2A1E), Color(0xFF5A431E), Color(0x001A1816)),
     headerScrim = Color(0x33FFFFFF),
-    normal = Color(0xFF1F4D2C), onNormal = Color(0xFFB6EFC4),
-    elevated = Color(0xFF5A4100), onElevated = Color(0xFFFFDE9C),
-    heart = Color(0xFFFFB4AB), temperature = Color(0xFFFFB960), bloodPressure = Color(0xFFFFB0BC),
+    normal = Color(0xFF1F4A32), onNormal = Color(0xFF8FCBA3),
+    elevated = Color(0xFF4A3414), onElevated = Color(0xFFE8B274),
+    heart = Color(0xFFF0917F), temperature = Color(0xFFFFB960), bloodPressure = Color(0xFFFFB0BC),
     oxygen = Color(0xFFA6CBFF), respiratory = Color(0xFFFFB3C1),
 )
 
@@ -192,16 +195,21 @@ object ApolloTheme {
 
 // ---------- Gradient header ----------
 
-/** The pastel pink → yellow header used at the top of every screen. Draws behind the status bar. */
+/**
+ * The dissipating sunset gradient used at the top of every screen: coral fading through warm
+ * yellow into the cream canvas, per apollo_health_ui_implementation_guide.md section 1.4/3.1.
+ * Draws behind the status bar.
+ */
 @Composable
 fun GradientHeader(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val brush = Brush.linearGradient(
-        colors = ApolloTheme.colors.headerGradient,
-        start = Offset.Zero,
-        end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY), // 135° diagonal
+    val colors = ApolloTheme.colors.headerGradient
+    val brush = Brush.verticalGradient(
+        0.00f to colors[0],
+        0.55f to colors[1],
+        1.00f to colors[2],
     )
     Column(
         modifier = modifier

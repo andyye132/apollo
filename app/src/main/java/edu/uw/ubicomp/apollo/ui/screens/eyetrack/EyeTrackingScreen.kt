@@ -19,13 +19,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,6 +47,7 @@ import edu.uw.ubicomp.apollo.sensing.vision.EyeTrackingController
 import edu.uw.ubicomp.apollo.sensing.vision.EyeTrackingService
 import edu.uw.ubicomp.apollo.sensing.vision.PassiveEyeTrackingState
 import edu.uw.ubicomp.apollo.sensing.vision.PassiveStatus
+import edu.uw.ubicomp.apollo.ui.components.ApolloCard
 import edu.uw.ubicomp.apollo.ui.components.StatusChip
 import edu.uw.ubicomp.apollo.ui.theme.ApolloTheme
 
@@ -196,7 +194,7 @@ private fun EyeTrackingContent() {
                 color = MaterialTheme.colorScheme.error,
             )
         } else {
-            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            ApolloCard {
                 Box(modifier = Modifier.fillMaxWidth().aspectRatio(3f / 4f)) {
                     AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
                     if (!state.faceDetected) {
@@ -351,11 +349,7 @@ private fun stopPassiveService(context: Context) {
 
 @Composable
 private fun MetricCard(label: String, value: String, unit: String, modifier: Modifier = Modifier) {
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = modifier,
-    ) {
+    ApolloCard(modifier = modifier) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(label, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onBackground)
             Spacer(Modifier.height(8.dp))

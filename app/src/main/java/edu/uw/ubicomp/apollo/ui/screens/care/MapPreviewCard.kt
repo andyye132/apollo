@@ -8,8 +8,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -20,14 +18,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.dp
+import edu.uw.ubicomp.apollo.ui.components.ApolloCard
 
 /** A stylized, decorative map — not a real map SDK. Pins are illustrative, tied to sample places. */
 @Composable
 fun MapPreviewCard() {
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-    ) {
+    ApolloCard {
         Box(modifier = Modifier.fillMaxWidth().height(160.dp)) {
             Canvas(modifier = Modifier.fillMaxWidth().height(160.dp)) {
                 val streetColor = androidx.compose.ui.graphics.Color(0x14000000)

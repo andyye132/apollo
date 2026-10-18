@@ -1,7 +1,9 @@
 package edu.uw.ubicomp.apollo.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,14 +21,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Air
 import androidx.compose.material.icons.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.RemoveRedEye
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Thermostat
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -35,6 +37,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,8 +49,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
 import edu.uw.ubicomp.apollo.ui.components.ApolloBottomNav
+import edu.uw.ubicomp.apollo.ui.components.ApolloCard
 import edu.uw.ubicomp.apollo.ui.components.ApolloDestination
 import edu.uw.ubicomp.apollo.ui.components.StatusChip
+import edu.uw.ubicomp.apollo.sensing.vision.PassiveEyeTrackingState
+import edu.uw.ubicomp.apollo.sensing.vision.PassiveStatus
 import edu.uw.ubicomp.apollo.ui.screens.care.CareScreen
 import edu.uw.ubicomp.apollo.ui.screens.eyetrack.EyeTrackingScreen
 import edu.uw.ubicomp.apollo.ui.theme.ApolloTheme
@@ -81,6 +87,8 @@ fun TodayScreen() {
 @Composable
 private fun CheckInContent(modifier: Modifier = Modifier) {
     var showEyeTracking by remember { mutableStateOf(false) }
+    var testsExpanded by remember { mutableStateOf(true) }
+    var allDayExpanded by remember { mutableStateOf(true) }
 
     if (showEyeTracking) {
         BackHandler { showEyeTracking = false }
@@ -97,61 +105,100 @@ private fun CheckInContent(modifier: Modifier = Modifier) {
 
         Column(modifier = Modifier.padding(horizontal = 20.dp)) {
             Spacer(Modifier.height(24.dp))
-            SectionLabel("Take a test")
-            Spacer(Modifier.height(12.dp))
-            MeasurementOptionCard(
-                icon = Icons.Filled.Thermostat,
-                title = "Temperature",
-                subtitle = "60 s preparation + 90 s contact",
-                chipText = "Phone ready",
+            CollapsibleSectionHeader(
+                title = "Take a test",
+                expanded = testsExpanded,
+                onToggle = { testsExpanded = !testsExpanded },
             )
-            Spacer(Modifier.height(12.dp))
-            MeasurementOptionCard(
-                icon = Icons.Filled.Favorite,
-                title = "Heart rate",
-                subtitle = "20 s capture · camera + flash",
-                chipText = "Last: 72 bpm",
-            )
-            Spacer(Modifier.height(12.dp))
-            MeasurementOptionCard(
-                icon = Icons.Filled.Air,
-                title = "Lungs",
-                subtitle = "Forced exhale into the mic — peak flow didn't pan out, still exploring",
-                chipText = "Coming soon",
-                chipShowsCheck = false,
-                chipBackground = MaterialTheme.colorScheme.surfaceVariant,
-                chipContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(12.dp))
-            MeasurementOptionCard(
-                icon = Icons.Filled.RemoveRedEye,
-                title = "Eye tracking",
-                subtitle = "Blink rate and gaze shifts, front camera — foreground prototype",
-                chipText = "Try it",
-                chipShowsCheck = false,
-                chipBackground = MaterialTheme.colorScheme.primaryContainer,
-                chipContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                onClick = { showEyeTracking = true },
-            )
-            Spacer(Modifier.height(10.dp))
-            Text(
-                "Taking both? The temperature test comes first because the camera flash warms your phone.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            AnimatedVisibility(visible = testsExpanded) {
+                Column {
+                    Spacer(Modifier.height(12.dp))
+                    MeasurementOptionCard(
+                        icon = Icons.Filled.Thermostat,
+                        title = "Temperature",
+                        subtitle = "60 s preparation + 90 s contact",
+                        chipText = "Phone ready",
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    MeasurementOptionCard(
+                        icon = Icons.Filled.Favorite,
+                        title = "Heart rate",
+                        subtitle = "20 s capture · camera + flash",
+                        chipText = "Last: 72 bpm",
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    MeasurementOptionCard(
+                        icon = Icons.Filled.Air,
+                        title = "Lungs",
+                        subtitle = "Forced exhale into the mic — peak flow didn't pan out, still exploring",
+                        chipText = "Coming soon",
+                        chipShowsCheck = false,
+                        chipBackground = MaterialTheme.colorScheme.surfaceVariant,
+                        chipContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    MeasurementOptionCard(
+                        icon = Icons.Filled.RemoveRedEye,
+                        title = "Eye tracking",
+                        subtitle = "Blink rate and gaze shifts, front camera — foreground prototype",
+                        chipText = "Try it",
+                        chipShowsCheck = false,
+                        chipBackground = MaterialTheme.colorScheme.primaryContainer,
+                        chipContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        onClick = { showEyeTracking = true },
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Taking both? The temperature test comes first because the camera flash warms your phone.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
 
             Spacer(Modifier.height(32.dp))
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Spacer(Modifier.height(24.dp))
 
-            SectionLabel("All day")
-            Spacer(Modifier.height(12.dp))
-            StepsCard()
-            Spacer(Modifier.height(16.dp))
-            ElevationChangeCard()
+            CollapsibleSectionHeader(
+                title = "All day",
+                expanded = allDayExpanded,
+                onToggle = { allDayExpanded = !allDayExpanded },
+            )
+            AnimatedVisibility(visible = allDayExpanded) {
+                Column {
+                    Spacer(Modifier.height(12.dp))
+                    StepsCard()
+                    Spacer(Modifier.height(16.dp))
+                    ElevationChangeCard()
+                    Spacer(Modifier.height(16.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        BlinkRateCard(modifier = Modifier.weight(1f))
+                        GazeShiftsCard(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
 
             Spacer(Modifier.height(24.dp))
         }
+    }
+}
+
+@Composable
+private fun CollapsibleSectionHeader(title: String, expanded: Boolean, onToggle: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClickLabel = if (expanded) "Collapse $title" else "Expand $title", onClick = onToggle),
+    ) {
+        SectionLabel(title)
+        Spacer(Modifier.weight(1f))
+        Icon(
+            if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -217,9 +264,7 @@ private fun MeasurementOptionCard(
     chipContentColor: Color = ApolloTheme.colors.onNormal,
     onClick: (() -> Unit)? = null,
 ) {
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ApolloCard(
         modifier = if (onClick != null) Modifier.fillMaxWidth().clickable(onClick = onClick) else Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
@@ -255,11 +300,7 @@ private fun MeasurementOptionCard(
 
 @Composable
 private fun StepsCard() {
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
+    ApolloCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Filled.DirectionsWalk, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
@@ -303,11 +344,7 @@ private fun StepsCard() {
 
 @Composable
 private fun ElevationChangeCard() {
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
+    ApolloCard(modifier = Modifier.fillMaxWidth()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -324,6 +361,70 @@ private fun ElevationChangeCard() {
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onBackground,
             )
+        }
+    }
+}
+
+/** Live, if passive tracking is running; otherwise prompts to start it. See PassiveEyeTrackingState. */
+@Composable
+private fun BlinkRateCard(modifier: Modifier = Modifier) {
+    val passiveState by PassiveEyeTrackingState.state.collectAsState()
+    EyeStatCard(
+        label = "Blinks",
+        value = passiveState.lastMinute?.blinkRatePerMin?.toInt()?.toString(),
+        status = passiveState.status,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun GazeShiftsCard(modifier: Modifier = Modifier) {
+    val passiveState by PassiveEyeTrackingState.state.collectAsState()
+    EyeStatCard(
+        label = "Gaze shifts",
+        value = passiveState.lastMinute?.shiftRatePerMin?.toInt()?.toString(),
+        status = passiveState.status,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun EyeStatCard(label: String, value: String?, status: PassiveStatus, modifier: Modifier = Modifier) {
+    val isTracking = status == PassiveStatus.RUNNING ||
+        status == PassiveStatus.PAUSED_CAMERA_IN_USE ||
+        status == PassiveStatus.PAUSED_SCREEN_OFF
+    val caption = when {
+        value != null -> "From passive tracking"
+        isTracking -> "Collecting…"
+        else -> "Start passive tracking to see this"
+    }
+    ApolloCard(modifier = modifier) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Filled.RemoveRedEye, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                Text(
+                    label,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    value ?: "–",
+                    style = MaterialTheme.typography.displayMedium.copy(fontSize = 28.sp()),
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+                Text(
+                    "per min",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 6.dp, bottom = 5.dp),
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(caption, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

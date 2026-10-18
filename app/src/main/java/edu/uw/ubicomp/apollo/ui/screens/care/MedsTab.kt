@@ -18,8 +18,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FlightTakeoff
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -31,6 +29,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import edu.uw.ubicomp.apollo.ui.components.ApolloCard
 import edu.uw.ubicomp.apollo.ui.components.StatusChip
 
 @Composable
@@ -107,9 +106,7 @@ private fun TravelModeChip() {
 
 @Composable
 private fun PickedForYouCard(item: PickedForYouItem, onClick: () -> Unit) {
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ApolloCard(
         modifier = Modifier
             .width(220.dp)
             .clickable(onClickLabel = "Open ${item.title}", onClick = onClick),
@@ -146,9 +143,7 @@ private fun PickedForYouCard(item: PickedForYouItem, onClick: () -> Unit) {
 
 @Composable
 private fun CatalogTile(category: CatalogCategory, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ApolloCard(
         modifier = modifier
             .semantics { contentDescription = "${category.title}, ${category.itemCount} items" }
             .clickable(onClick = onClick),

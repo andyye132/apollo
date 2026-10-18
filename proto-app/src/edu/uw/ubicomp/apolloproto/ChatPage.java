@@ -31,10 +31,14 @@ import android.widget.TextView;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * "Ask Apollo": the chat tab (the design boards' companion screen). Replies come from ApolloBrain, on
- * the phone; action buttons under a reply open the screen it suggests. Apollo answers in speech bubbles
+ * the phone, unless the user turns on Gemini mode (GeminiBrain): then the conversation and a summary of their readings go
+ * to Google, and ApolloBrain answers whenever Gemini can't. Emergencies are always answered on the phone, first. Action
+ * buttons under a reply open the screen it suggests. Apollo answers in speech bubbles
  * with his face beside them, its expression matched to what he says (mood()). The conversation lasts
  * while the app is open.
  */
@@ -46,6 +50,9 @@ final class ChatPage {
     }
 
     private static final List<ApolloBrain.Msg> HISTORY = new ArrayList<>();
+    private static final String PREF_GEMINI = "chat_gemini";   // the user agreed to send chats and readings to Gemini
+    private static final Brain GEMINI = new GeminiBrain();
+    private static final ExecutorService BRAIN = Executors.newSingleThreadExecutor();
 
     private final Activity a;
     private final Host host;
@@ -54,6 +61,8 @@ final class ChatPage {
     private ScrollView scroll;
     private EditText input;
     private ImageView headFace;
+    private TextView headSub;
+    private LinearLayout note;
     private boolean thinking;
 
     ChatPage(Activity a, Host host) {
@@ -70,14 +79,13 @@ final class ChatPage {
         LinearLayout names = Ui.column(a);
         TextView t = Ui.styled(a, "A little perspective.", 26, Ui.TEXT, 700);
         names.addView(t);
-        Ui.add(names, Ui.text(a, "Apollo · on this phone", 14.5f, Ui.MUTED, false), 3);
+        headSub = Ui.add(names, Ui.text(a, "", 14.5f, Ui.MUTED, false), 3);
         LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
         nl.leftMargin = Ui.dp(a, 12);
         head.addView(names, nl);
 
-        LinearLayout note = Ui.add(col, Ui.tintCard(a, Ui.CORAL_TINT), 18);
-        note.addView(Ui.text(a, "Apollo can see your latest heart rate, temperature and steps. Nothing leaves this phone.",
-                14, Ui.CORAL_DARK, false));
+        note = Ui.add(col, Ui.tintCard(a, Ui.CORAL_TINT), 18);
+        showMode();
 
         thread = Ui.add(col, Ui.column(a), 6);
         for (ApolloBrain.Msg m : HISTORY) thread.addView(bubble(m));
@@ -128,6 +136,47 @@ final class ChatPage {
         if (HISTORY.size() > 1) toBottom(60);
     }
 
+    private static boolean geminiOn(Activity a) {
+        return GeminiBrain.configured() && Store.prefs(a).getBoolean(PREF_GEMINI, false);
+    }
+
+    /** The header line and the privacy note say where replies come from; the note holds the Gemini switch. */
+    private void showMode() {
+        boolean on = geminiOn(a);
+        headSub.setText(on ? "Apollo · with Gemini" : "Apollo · on this phone");
+        note.removeAllViews();
+        note.addView(Ui.text(a, on ? "Gemini mode is on. Your messages and a short summary of your readings (heart rate, "
+                + "temperature, breath, steps, eyes) go to Google to write replies. Emergencies are always answered on this phone."
+                : "Apollo can see your latest heart rate, temperature and steps. Nothing leaves this phone.", 14, Ui.CORAL_DARK, false));
+        if (!GeminiBrain.configured()) return;
+        TextView sw = Ui.add(note, Ui.styled(a, on ? "Turn off Gemini" : "Get smarter answers with Gemini", 14, Ui.CORAL_DARK, 600), 10);
+        sw.setPadding(0, Ui.dp(a, 4), 0, Ui.dp(a, 4));
+        Ui.tappable(sw, v -> {
+            if (geminiOn(a)) {
+                Store.prefs(a).edit().putBoolean(PREF_GEMINI, false).apply();
+                showMode();
+            } else {
+                askGemini();
+            }
+        });
+    }
+
+    /** Consent first: nothing is sent until the user agrees, and they can turn it off any time. */
+    private void askGemini() {
+        new android.app.AlertDialog.Builder(a)
+                .setTitle("Use Gemini for Apollo's replies?")
+                .setMessage("Apollo will send your messages and a short summary of your readings (latest heart rate, temperature, "
+                        + "breath strength, steps today and eye tracking) to Google's Gemini service to write each reply. "
+                        + "Google's terms apply to what is sent. Raw sensor data, photos and your location are never sent, "
+                        + "and emergencies are always answered on this phone.\n\nYou can turn this off here any time.")
+                .setPositiveButton("Turn on", (d, w) -> {
+                    Store.prefs(a).edit().putBoolean(PREF_GEMINI, true).apply();
+                    showMode();
+                })
+                .setNegativeButton("Not now", null)
+                .show();
+    }
+
     private void send(String raw) {
         String q = raw.trim();
         if (q.isEmpty() || thinking) return;
@@ -135,26 +184,36 @@ final class ChatPage {
         ApolloBrain.Msg mine = new ApolloBrain.Msg(true, q, null);
         HISTORY.add(mine);
         thread.addView(bubble(mine));
-        // A short pause with a typing bubble, so the reply reads as a reply.
+        // A typing bubble while Apollo works (at least a short pause, so the reply reads as a reply).
         thinking = true;
         View dots = bubble(new ApolloBrain.Msg(false, TYPING, null));
         thread.addView(dots);
         setFace(headFace, "thinking");
         toBottom(40);
-        ui.postDelayed(() -> {
-            thinking = false;
-            thread.removeView(dots);
-            ApolloBrain.Msg r = ApolloBrain.reply(a, q, host.steps());
-            // Care's recommender remembers the conversation; if the words clearly name a need Apollo didn't point to, link its picks.
-            String need = CareSignals.chat(a, q, r);
-            boolean linked = false;
-            for (String[] act : r.actions) linked |= act[1].startsWith("category:") || act[1].startsWith("care:");
-            if (need != null && !linked) r.act("See picks for " + CareData.need(need).title.toLowerCase(Locale.US), "care:meds");
-            HISTORY.add(r);
-            thread.addView(bubble(r));
-            setFace(headFace, mood(r));
-            toBottom(40);
-        }, 650);
+        long started = System.currentTimeMillis();
+        boolean useGemini = geminiOn(a);
+        List<ApolloBrain.Msg> turns = new ArrayList<>(HISTORY);
+        long steps = host.steps();
+        BRAIN.execute(() -> {
+            ApolloBrain.Msg urgent = ApolloBrain.emergency(q);   // never leaves the phone
+            ApolloBrain.Msg fromModel = urgent == null && useGemini ? GEMINI.reply(a, turns, steps) : null;
+            ApolloBrain.Msg reply = urgent != null ? urgent : fromModel != null ? fromModel : ApolloBrain.reply(a, q, steps);
+            ui.postDelayed(() -> showReply(q, reply, dots), Math.max(0, 650 - (System.currentTimeMillis() - started)));
+        });
+    }
+
+    private void showReply(String q, ApolloBrain.Msg r, View dots) {
+        thinking = false;
+        thread.removeView(dots);
+        // Care's recommender remembers the conversation; if the words clearly name a need Apollo didn't point to, link its picks.
+        String need = CareSignals.chat(a, q, r);
+        boolean linked = false;
+        for (String[] act : r.actions) linked |= act[1].startsWith("category:") || act[1].startsWith("care:");
+        if (need != null && !linked) r.act("See picks for " + CareData.need(need).title.toLowerCase(Locale.US), "care:meds");
+        HISTORY.add(r);
+        thread.addView(bubble(r));
+        setFace(headFace, mood(r));
+        toBottom(40);
     }
 
     /** Scrolls to the end, so the newest reply and the input box sit above the floating bar. */

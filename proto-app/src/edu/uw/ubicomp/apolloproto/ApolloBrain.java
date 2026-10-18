@@ -50,10 +50,9 @@ final class ApolloBrain {
                 + "or where to find care nearby.", null);
     }
 
-    static Msg reply(Context c, String raw, long stepsToday) {
-        String q = " " + raw.toLowerCase(Locale.US).replace('’', '\'').replaceAll("[^a-z0-9' ]", " ") + " ";
-
-        // 1. Emergencies, before anything else.
+    /** Emergencies, answered on the phone before anything else (and before any model sees the message); null if none. */
+    static Msg emergency(String raw) {
+        String q = normalize(raw);
         if (has(q, "suicid", "kill myself", "end my life", "hurt myself", "self harm", "want to die")) {
             return new Msg(false, "I'm really glad you told me. You deserve support right now. Please call or text "
                     + "**988** (Suicide & Crisis Lifeline) to talk to someone tonight. If you're in immediate danger, call **911**.", null)
@@ -65,6 +64,19 @@ final class ApolloBrain {
                     + "Don't wait for a reading from me.", null)
                     .act("Call 911", "dial:911").act("Find the nearest ER", "care:services");
         }
+        return null;
+    }
+
+    private static String normalize(String raw) {
+        return " " + raw.toLowerCase(Locale.US).replace('’', '\'').replaceAll("[^a-z0-9' ]", " ") + " ";
+    }
+
+    static Msg reply(Context c, String raw, long stepsToday) {
+        String q = normalize(raw);
+
+        // 1. Emergencies, before anything else.
+        Msg urgent = emergency(raw);
+        if (urgent != null) return urgent;
 
         List<JSONObject> hr = readable(Store.history(c, "heart_rate"));
         List<JSONObject> fh = new ArrayList<>();

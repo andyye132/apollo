@@ -4,3 +4,14 @@ __pycache__/
 # FeverProbe build output and local signing key (build.sh regenerates the key)
 probe-app/build/
 probe-app/debug.keystore
+
+# Gradle / Android Studio
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+captures/
+.cxx/
+.kotlin/

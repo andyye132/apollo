@@ -44,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -56,6 +57,8 @@ import edu.uw.ubicomp.apollo.sensing.vision.PassiveEyeTrackingState
 import edu.uw.ubicomp.apollo.sensing.vision.PassiveStatus
 import edu.uw.ubicomp.apollo.ui.screens.care.CareScreen
 import edu.uw.ubicomp.apollo.ui.screens.eyetrack.EyeTrackingScreen
+import edu.uw.ubicomp.apollo.ui.screens.breath.BlowStrengthScreen
+import edu.uw.ubicomp.apollo.sensing.breath.BlowStrengthStore
 import edu.uw.ubicomp.apollo.ui.theme.ApolloTheme
 import edu.uw.ubicomp.apollo.ui.theme.GradientHeader
 
@@ -87,6 +90,7 @@ fun TodayScreen() {
 @Composable
 private fun CheckInContent(modifier: Modifier = Modifier) {
     var showEyeTracking by remember { mutableStateOf(false) }
+    var showBreathStrength by remember { mutableStateOf(false) }
     var testsExpanded by remember { mutableStateOf(true) }
     var allDayExpanded by remember { mutableStateOf(true) }
 
@@ -95,6 +99,13 @@ private fun CheckInContent(modifier: Modifier = Modifier) {
         EyeTrackingScreen(onBack = { showEyeTracking = false }, modifier = modifier)
         return
     }
+    if (showBreathStrength) {
+        BackHandler { showBreathStrength = false }
+        BlowStrengthScreen(onBack = { showBreathStrength = false }, modifier = modifier)
+        return
+    }
+    val context = LocalContext.current
+    val breathLabel = remember(showBreathStrength) { BlowStrengthStore(context).lastResultLabel() }
 
     Column(
         modifier = modifier
@@ -129,12 +140,13 @@ private fun CheckInContent(modifier: Modifier = Modifier) {
                     Spacer(Modifier.height(12.dp))
                     MeasurementOptionCard(
                         icon = Icons.Filled.Air,
-                        title = "Lungs",
-                        subtitle = "Forced exhale into the mic — peak flow didn't pan out, still exploring",
-                        chipText = "Coming soon",
+                        title = "Breath strength",
+                        subtitle = "About 40 s · blow at the screen · compared with your own baseline",
+                        chipText = breathLabel ?: "Try it",
                         chipShowsCheck = false,
-                        chipBackground = MaterialTheme.colorScheme.surfaceVariant,
-                        chipContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        chipBackground = MaterialTheme.colorScheme.primaryContainer,
+                        chipContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        onClick = { showBreathStrength = true },
                     )
                     Spacer(Modifier.height(12.dp))
                     MeasurementOptionCard(

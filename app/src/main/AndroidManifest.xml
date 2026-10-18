@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera.front" android:required="false" />
+    <!-- Breath strength reads the barometer (no permission needed); the test hides itself without one -->
+    <uses-feature android:name="android.hardware.sensor.barometer" android:required="false" />
 
     <!-- Passive eye tracking: a camera foreground service, per prototypes/eyetrack/README.md -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

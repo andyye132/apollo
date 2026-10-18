@@ -11,7 +11,7 @@ import java.util.Iterator;
  * image) to 1 (right corner); y is the offset from the corner-to-corner midline, positive downward. Both eyes
  * are averaged. This is a relative signal, not a screen position: there is no per-user calibration.
  *
- * A gaze shift is the gaze moving more than SHIFT_THRESHOLD within SHIFT_WINDOW_MS while the eyes are open.
+ * A gaze shift is the gaze moving more than SHIFT_THRESHOLD within shiftWindowMs while the eyes are open.
  * At 30 fps a saccade (20-200 ms) spans only a few frames, so this counts shifts; it can't measure their speed.
  */
 final class EyeMetrics {
@@ -24,8 +24,18 @@ final class EyeMetrics {
     // Starting values; tune on recordings
     static final double BLINK_CLOSE = 0.5, BLINK_OPEN = 0.3;   // blendshape eyeBlink score, with hysteresis
     static final double SHIFT_THRESHOLD = 0.10;                // eye widths
-    static final long SHIFT_WINDOW_MS = 100, SHIFT_REFRACTORY_MS = 150, RATE_WINDOW_MS = 60_000;
+    static final long RATE_WINDOW_MS = 60_000;
     static final double SMOOTHING = 0.5;                       // EMA weight of the newest frame
+
+    /** The shift window must span at least ~2 frames: 100 ms at 30 fps, 150 ms at 15 fps. */
+    private final long shiftWindowMs, shiftRefractoryMs;
+
+    EyeMetrics() { this(30); }
+
+    EyeMetrics(double fps) {
+        shiftWindowMs = Math.max(100, Math.round(2.2 * 1000 / fps));
+        shiftRefractoryMs = shiftWindowMs + 50;
+    }
 
     double gazeX = Double.NaN, gazeY = Double.NaN;
     boolean eyesClosed;
@@ -68,11 +78,11 @@ final class EyeMetrics {
         }
 
         history.add(new double[]{t, gazeX, gazeY});
-        while (history.size() > 1 && t - history.peekFirst()[0] > SHIFT_WINDOW_MS) history.pollFirst();
+        while (history.size() > 1 && t - history.peekFirst()[0] > shiftWindowMs) history.pollFirst();
         double[] old = history.peekFirst();
-        if (old != null && t - old[0] >= SHIFT_WINDOW_MS / 2
+        if (old != null && t - old[0] >= shiftWindowMs / 2
                 && Math.hypot(gazeX - old[1], gazeY - old[2]) > SHIFT_THRESHOLD
-                && t - lastShiftT > SHIFT_REFRACTORY_MS) {
+                && t - lastShiftT > shiftRefractoryMs) {
             shiftCount++;
             shiftEvent = true;
             shiftTimes.add(t);

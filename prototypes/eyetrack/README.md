@@ -4,7 +4,7 @@ Front camera → MediaPipe Face Landmarker → blink rate and gaze-shift rate. T
 
 | | |
 | --- | --- |
-| Status (2026-10-17) | **Foreground version works on the Pixel 7.** Not yet run on the Pixel 4. The passive (background) version is specified below, not built |
+| Status (2026-10-17) | **The foreground preview works on the Pixel 7 and Pixel 5.** The **passive camera foreground service is built** (`EyeTrackingService`) and runs in the background on a Pixel 5, but at ~9 fps instead of 15 (see Pixel 5 results). Not yet run on the Pixel 4. The team switched to a teammate's CV implementation, so this prototype is paused |
 | Stack | Java, Views, Gradle 9.7.1, AGP 9.4.1, CameraX 1.6.2, MediaPipe tasks-vision 1.0.0 (all at least two weeks old when chosen), compileSdk/targetSdk 36, minSdk 30 |
 | Model | `face_landmarker.task` (float16, Apache 2.0, 3.7 MB), downloaded by `fetch_model.sh` into `app/src/main/assets/`. Not committed |
 
@@ -56,7 +56,35 @@ Pull it with `adb pull`. In Git Bash, prefix adb commands that take `/sdcard/...
 3. **Vertical gaze is weak.** The iris moves less vertically, and the lids cover it. Treat `y` as unreliable until it's measured.
 4. **The APK is 67 MB** because MediaPipe ships native libraries for every ABI. Add `ndk { abiFilters += "arm64-v8a" }` (both Pixels are arm64) if size matters.
 
-## Next: passive tracking as a camera foreground service (specified, not built)
+## Pixel 5 results (Android 14)
+
+**Passive service:**
+
+- **Works in the background:** start allowed from the visible app; front camera at a fixed `[15,15]` fps range (chosen from the camera's reported ranges).
+- **Screen-off pause:** works.
+- **"Camera in use" when the Camera app opens:** detected (CameraX error 2).
+- **Stop:** clean, and the partial last minute gets written.
+- **Not verified:** resuming after the Camera app closes.
+
+**Frame rate, from the service's 5 s profile log** (`adb logcat -s EyeTrackingService`):
+
+| | App on screen | App in background |
+| --- | --- | --- |
+| Frames processed | 15 fps (target) | **~9 fps** |
+| Bitmap convert + rotate + mirror | 8 ms | 23 ms |
+| MediaPipe detect (CPU) | 52 ms | 85 ms |
+
+The camera delivers 15 fps either way. **Backgrounded, the process runs on slower CPU cores**, and all per-frame work slows 1.6–3×. Lowering the analysis resolution didn't help, because MediaPipe resizes to its fixed model input sizes anyway.
+
+**Next fixes, in order:**
+
+1. **Try the GPU delegate.** Launch with `adb shell am start -n edu.uw.ubicomp.apollo.eyetrack/.MainActivity --es delegate GPU`, then tap Start, and compare the profile lines. It hasn't been run yet.
+2. **Skip the second bitmap copy:** pass rotation via MediaPipe `ImageProcessingOptions` instead of rotating, and skip the mirror in passive mode.
+3. **Blinks from lid landmarks** (eye-openness ratio), dropping the blendshape model and fixing the looking-down problem.
+
+**Notification:** the first build used a LOW-importance channel. On Android 14 that's collapsed in the "Silent" section with no status-bar icon, and testers couldn't find it. It now uses a DEFAULT-importance silent channel. Verify it's visible on the next run.
+
+## Passive tracking as a camera foreground service (built; spec below)
 
 **Goal:** keep counting blinks and gaze shifts while the user is in other apps, the way video-call apps keep the camera. On Android the only allowed way is a **foreground service of type `camera`**.
 

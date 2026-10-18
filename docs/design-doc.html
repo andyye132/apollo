@@ -246,7 +246,8 @@ Apollo is an Android app that takes health measurements with the phone's own sen
 | SpO2 | Red vs green PPG ratio, labelled experimental | Nemcova 2020 | v2 |
 | HRV | Accelerometer on the belly, 30 s | EHB 2017 | v2 |
 | Absolute elevation | Barometer plus a reference pressure | Liu 2014 | v2 |
-| Lung function | Microphone during exhale or sustained "Aaah" | SpiroSmart, Saleheen | Stretch |
+| Blow strength vs your own baseline | Barometer pulse when a blow at 2–3 cm flexes the sealed phone's screen (not peak flow) | Hafez 2020 (mechanism) | v1 candidate: measured on a Pixel 5, spec in `tools/barotest/README.md` |
+| Lung function (peak flow, FEV1/FVC) | Microphone during exhale or sustained "Aaah" | SpiroSmart, Saleheen | Dropped for now: mic and barometer both failed cross-person calibration (see SpiroSmart below) |
 | Eye tracking | Front camera, MediaPipe face landmarks: blink rate and gaze-shift rate; passive via a camera foreground service | None | Stretch: foreground prototype works (Pixel 7), passive version specified |
 
 ### Phones
@@ -340,7 +341,7 @@ apollo/
 ├── docs/                 this doc
 ├── probe-app/            existing FeverProbe logger (retire once :sensing:thermal works)
 ├── prototypes/eyetrack/  standalone eye-tracking prototype; becomes :sensing:vision
-└── tools/                existing adb/test scripts
+└── tools/                adb/test scripts; tools/mictest (mic linearity, blow recorder), tools/barotest (barometer blow strength)
 ```
 
 Each module uses the package `edu.uw.ubicomp.apollo.<module>`, for example `edu.uw.ubicomp.apollo.sensing.thermal`.
@@ -1305,6 +1306,7 @@ Four people did 8 peak-flow-meter blows each (top-3 means 538, 460, 337, 283 L/m
 - **Wind was the first problem.** At the short wire distance, every blow clipped. The low-frequency energy below 300 Hz is wind buffeting the phone, not sound. Above about 3 kHz the wind has died out, so the 8–20 kHz airflow hiss is unaffected by it.
 - **The hiss feature doesn't separate people.** P1–P3 read within 1.2 dB of each other despite meter readings of 337–538 L/min. Per-person spread was ±2–6 dB per blow. Leave-one-out error was about 300 L/min, which is useless.
 - **13 candidate features didn't fix it.** Between-person spread divided by within-person spread was at most 1.7. The spectral centroid ranked all four people correctly, but with between/within at 0.4, so treat it as chance (1 in 24 for a perfect 4-person ranking) and as a hypothesis only.
+- **Barometer follow-up, same day (Pixel 5):** a blow from 2–3 cm onto a phone lying flat gives a clear pulse that follows effort (soft ~11 Pa, maximal ~55 Pa; noise 1.6 Pa). It is repeatable for one person (±7%), but across 4 people the leave-one-out error against the meter was 115 L/min. The jet's push goes as flow² ÷ mouth-opening area, so mouth shape still leaks in. **Shipped as "blow strength against your own baseline", not peak flow:** spec and data in `tools/barotest/README.md`.
 - **Conclusion:** at a distance and without fixed geometry, aim and lip shape vary more than airflow does. Fixed geometry (a tube, blowing through the meter while the phone listens) would be the next test. The team chose not to add components, so peak flow is dropped. Respiratory candidates without extra hardware are breathing rate from the accelerometer (phone on the chest) or from the heart-rate test, and a sustained-vowel duration.
 
 **Gotcha:** the first run showed heavy compression on every source. It came from the laptop's audio enhancements (Windows/Realtek), not the phone. Turn enhancements off before running the test.

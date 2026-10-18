@@ -1,6 +1,8 @@
 package edu.uw.ubicomp.apollo.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +22,7 @@ import androidx.compose.material.icons.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.RemoveRedEye
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material3.Card
@@ -46,6 +49,7 @@ import edu.uw.ubicomp.apollo.ui.components.ApolloBottomNav
 import edu.uw.ubicomp.apollo.ui.components.ApolloDestination
 import edu.uw.ubicomp.apollo.ui.components.StatusChip
 import edu.uw.ubicomp.apollo.ui.screens.care.CareScreen
+import edu.uw.ubicomp.apollo.ui.screens.eyetrack.EyeTrackingScreen
 import edu.uw.ubicomp.apollo.ui.theme.ApolloTheme
 import edu.uw.ubicomp.apollo.ui.theme.GradientHeader
 
@@ -76,6 +80,14 @@ fun TodayScreen() {
 
 @Composable
 private fun CheckInContent(modifier: Modifier = Modifier) {
+    var showEyeTracking by remember { mutableStateOf(false) }
+
+    if (showEyeTracking) {
+        BackHandler { showEyeTracking = false }
+        EyeTrackingScreen(onBack = { showEyeTracking = false }, modifier = modifier)
+        return
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -104,11 +116,22 @@ private fun CheckInContent(modifier: Modifier = Modifier) {
             MeasurementOptionCard(
                 icon = Icons.Filled.Air,
                 title = "Lungs",
-                subtitle = "Exhale into the microphone",
+                subtitle = "Forced exhale into the mic — peak flow didn't pan out, still exploring",
                 chipText = "Coming soon",
                 chipShowsCheck = false,
                 chipBackground = MaterialTheme.colorScheme.surfaceVariant,
                 chipContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            MeasurementOptionCard(
+                icon = Icons.Filled.RemoveRedEye,
+                title = "Eye tracking",
+                subtitle = "Blink rate and gaze shifts, front camera — foreground prototype",
+                chipText = "Try it",
+                chipShowsCheck = false,
+                chipBackground = MaterialTheme.colorScheme.primaryContainer,
+                chipContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                onClick = { showEyeTracking = true },
             )
             Spacer(Modifier.height(10.dp))
             Text(
@@ -192,11 +215,12 @@ private fun MeasurementOptionCard(
     chipShowsCheck: Boolean = true,
     chipBackground: Color = ApolloTheme.colors.normal,
     chipContentColor: Color = ApolloTheme.colors.onNormal,
+    onClick: (() -> Unit)? = null,
 ) {
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = if (onClick != null) Modifier.fillMaxWidth().clickable(onClick = onClick) else Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {

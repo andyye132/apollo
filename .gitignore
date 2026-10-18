@@ -26,6 +26,9 @@ tools/mictest/build/
 tools/mictest/debug.keystore
 tools/mictest/out/
 
+# MediaPipe face landmarker model (~3.7 MB, Apache 2.0); fetch with app/fetch_eyetrack_model.sh
+app/src/main/assets/face_landmarker.task
+
 # Android Studio per-user project files
 .idea/
 *.iml

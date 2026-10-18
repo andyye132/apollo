@@ -242,10 +242,8 @@ final class ChatPage {
      */
     static String mood(ApolloBrain.Msg m) {
         String t = m.text.toLowerCase(Locale.US);
-        boolean dials = false;
-        for (String[] act : m.actions) dials |= act[1].startsWith("dial:");
         if (TYPING.equals(m.text)) return "thinking";
-        if (dials) return "curious";
+        if (m.urgent) return "curious";
         if (t.contains("slow it down") || t.contains("breathe in")) return "calm";
         if (t.contains("above typical") || t.contains("above the usual") || t.contains("weak signal") || t.contains("can't see")) return "thinking";
         if (t.contains("don't have") || t.contains("no readings yet") || t.contains("still building")) return "curious";

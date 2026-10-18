@@ -75,7 +75,7 @@ final class CareSignals {
      * words point to with confidence, or null. Emergencies and crises aren't remembered (they're not shopping).
      */
     static String chat(Context c, String said, ApolloBrain.Msg reply) {
-        for (String[] act : reply.actions) if (act[1].startsWith("dial:")) return null;
+        if (reply.urgent) return null;
         log(c, CareModel.Kind.CHAT, said, null);
         log(c, CareModel.Kind.APOLLO, reply.text.replace("**", ""), null);
         for (String[] act : reply.actions) {

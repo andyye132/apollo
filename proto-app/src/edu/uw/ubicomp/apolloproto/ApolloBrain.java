@@ -22,11 +22,17 @@ final class ApolloBrain {
         final String text;   // **bold** marks emphasis
         final String basedOn;
         final List<String[]> actions = new ArrayList<>();
+        boolean urgent;      // an emergency or crisis reply: numbers to call are named in the text, never dialled
 
         Msg(boolean mine, String text, String basedOn) {
             this.mine = mine;
             this.text = text;
             this.basedOn = basedOn;
+        }
+
+        Msg urgent() {
+            urgent = true;
+            return this;
         }
 
         Msg act(String label, String action) {
@@ -36,7 +42,7 @@ final class ApolloBrain {
     }
 
     // Actions MainActivity knows: temp, hr, calibrate, calm, breath, trends, care:meds, care:services,
-    // category:<id>, dial:<number>.
+    // category:<id>. No phone calls: emergency numbers are named in the text only.
 
     static final String[] SUGGESTIONS = {
             "How's my heart rate?", "Do I have a fever?", "Find urgent care nearby", "What helps a headache?",
@@ -53,16 +59,19 @@ final class ApolloBrain {
     /** Emergencies, answered on the phone before anything else (and before any model sees the message); null if none. */
     static Msg emergency(String raw) {
         String q = normalize(raw);
-        if (has(q, "suicid", "kill myself", "end my life", "hurt myself", "self harm", "want to die")) {
+        if (has(q, "suicid", "kill myself", "kill me ", "killing myself", "end my life", "end it all", "take my life",
+                "hurt myself", "harm myself", "self harm", "cut myself", "want to die", "wanna die", "wish i was dead",
+                "wish i were dead", "better off dead", "don't want to live", "dont want to live", "don't want to be alive",
+                "dont want to be alive", "no reason to live", "not worth living")) {
             return new Msg(false, "I'm really glad you told me. You deserve support right now. Please call or text "
                     + "**988** (Suicide & Crisis Lifeline) to talk to someone tonight. If you're in immediate danger, call **911**.", null)
-                    .act("Call 988", "dial:988").act("Call 911", "dial:911");
+                    .urgent();
         }
         if (has(q, "chest pain", "can't breathe", "cant breathe", "cannot breathe", "trouble breathing", "stroke",
                 "seizure", "unconscious", "passed out", "overdose", "bleeding a lot", "severe bleeding", "face drooping")) {
             return new Msg(false, "That could be an emergency. **Call 911 now**, or have someone nearby call for you. "
                     + "Don't wait for a reading from me.", null)
-                    .act("Call 911", "dial:911").act("Find the nearest ER", "care:services");
+                    .urgent().act("Find the nearest ER", "care:services");
         }
         return null;
     }

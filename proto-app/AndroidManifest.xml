@@ -8,6 +8,10 @@
 
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <!-- Passive eye tracking (All day): a camera foreground service with its notification. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Development permission for the thermistors, granted once over adb (build.sh does it on install). -->
     <uses-permission android:name="android.permission.DUMP" />
@@ -53,5 +57,6 @@
         <activity android:name=".TouchLabActivity" android:screenOrientation="portrait" />
         <activity android:name=".CalmSenseActivity" android:screenOrientation="portrait" />
         <activity android:name=".CalibrateActivity" android:screenOrientation="portrait" />
+        <service android:name=".EyeTrackingService" android:foregroundServiceType="camera" android:exported="false" />
     </application>
 </manifest>
